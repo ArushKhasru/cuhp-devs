@@ -4,6 +4,8 @@ export interface IUser extends Document {
   fullName: string;
   email: string;
   studentId?: string;
+  githubId?: string;
+  authProvider?: "credentials" | "github";
   handle?: string;
   avatar?: string;
   bio?: string;

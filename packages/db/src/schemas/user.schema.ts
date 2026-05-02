@@ -38,6 +38,17 @@ export const UserSchema = new Schema<IUser>(
       unique: true,
       sparse: true,
     },
+    githubId: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+    },
+    authProvider: {
+      type: String,
+      enum: ["credentials", "github"],
+      default: "credentials",
+    },
     password: {
       type: String,
       required: true

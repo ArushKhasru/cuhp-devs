@@ -1,8 +1,8 @@
 
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { Analytics } from "@vercel/analytics/next";
-import "./globals.css";
+import { Analytics } from "@vercel/analytics/react";
+import "./globals.css"
 import { ToastProvider } from "../components/ToastProvider";
 import ThemeWrapper from "../components/ThemeWrapper";
 

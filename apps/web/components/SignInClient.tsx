@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SignInForm } from "@repo/ui/sign-in/SignInForm";
 import { AuthToggle } from "@repo/ui/toogle/AuthToggle";
-import { apiFetch } from "../lib/api";
+import { API_URL, apiFetch } from "../lib/api";
 import { toast } from "../store/useToastStore";
 import { useAuthStore } from "../store/useAuthStore";
 
@@ -43,7 +43,12 @@ export function SignInClient() {
         }
     };
 
-    const handleOAuth = async (provider: "google" | "github") => {
+    const handleOAuth = (provider: "google" | "github") => {
+        if (provider === "github") {
+            window.location.href = `${API_URL}/auth/github`;
+            return;
+        }
+
         toast.info(`${provider} OAuth is not implemented yet.`);
     };
 

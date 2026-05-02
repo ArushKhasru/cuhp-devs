@@ -40,7 +40,7 @@ yarn-error.log*
 *.pem
 piston
 mongo-fix
-
+Report
 
 judge0/
 packages/**/tsconfig.tsbuildinfo

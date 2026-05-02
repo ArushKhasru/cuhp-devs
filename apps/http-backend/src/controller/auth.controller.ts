@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
+import axios from "axios";
+import { randomBytes } from "crypto";
 import { User } from "@repo/db";
 import { signToken, verifyToken } from "../utils";
 import { signinSchema, signupSchema } from "../validators/auth.schema"
@@ -7,6 +9,109 @@ import { signinSchema, signupSchema } from "../validators/auth.schema"
 const isProduction = process.env.NODE_ENV === "production";
 const authCookieMaxAge = 4 * 24 * 60 * 60 * 1000;
 const authCookieSameSite = isProduction ? "none" : "lax";
+const githubStateCookieName = "github_oauth_state";
+const githubStateMaxAge = 10 * 60 * 1000;
+
+type GithubTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type GithubProfile = {
+  id: number;
+  login: string;
+  name: string | null;
+  email: string | null;
+  avatar_url: string;
+};
+
+type GithubEmail = {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+};
+
+const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, "");
+
+const getFrontendUrl = () =>
+  normalizeBaseUrl(
+    process.env.FRONTEND_URL ||
+    process.env.CLIENT_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000"
+  );
+
+// const getBackendUrl = () =>
+//   normalizeBaseUrl(
+//     process.env.BACKEND_URL ||
+//     process.env.HTTP_BACKEND_URL ||
+//     `http://localhost:${process.env.PORT || 3001}`
+//   );
+
+const getGithubCallbackUrl = () => {
+  const callbackUrl =
+    process.env.GITHUB_CALLBACK_URL?.trim();
+
+  if (!callbackUrl) {
+    throw new Error("GITHUB_CALLBACK_URL is not defined");
+  }
+
+  return callbackUrl;
+};
+
+const setAuthCookie = (res: Response, token: string) => {
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: authCookieSameSite,
+    maxAge: authCookieMaxAge,
+  });
+};
+
+const clearGithubStateCookie = (res: Response) => {
+  res.clearCookie(githubStateCookieName, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: authCookieSameSite,
+  });
+};
+
+const redirectToAuthCallback = (
+  res: Response,
+  params: Record<string, string>
+) => {
+  const url = new URL(`${getFrontendUrl()}/auth/callback`);
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
+  return res.redirect(url.toString());
+};
+
+const serializeAuthUser = (user: any) => ({
+  id: user._id.toString(),
+  name: user.fullName,
+  fullName: user.fullName,
+  email: user.email,
+  studentId: user.studentId,
+  program: user.program,
+  semester: user.semester,
+  interests: user.interests,
+  handle: user.handle,
+  avatar: user.avatar,
+  bio: user.bio,
+  theme: user.theme,
+  onboardingCompleted: user.onboardingCompleted,
+});
+
+const pickGithubEmail = (
+  profileEmail: string | null,
+  emails: GithubEmail[]
+) => {
+  const primaryVerified = emails.find((email) => email.primary && email.verified);
+  const firstVerified = emails.find((email) => email.verified);
+  return primaryVerified?.email || firstVerified?.email || profileEmail || null;
+};
 
 export const signup = async (req: Request, res: Response) => {
   try {
@@ -47,6 +152,7 @@ export const signup = async (req: Request, res: Response) => {
       email: email.toLowerCase(),
       studentId: studentId?.trim() || undefined,
       password: hashedPassword,
+      authProvider: "credentials",
     });
 
     const token = signToken({
@@ -56,24 +162,12 @@ export const signup = async (req: Request, res: Response) => {
       avatar: user.avatar,
     });
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: authCookieSameSite,
-      maxAge: authCookieMaxAge,
-    });
+    setAuthCookie(res, token);
 
     return res.status(201).json({
       message: "User registered successfully",
       token,
-      user: {
-        id: user._id.toString(),
-        name: user.fullName,
-        fullName: user.fullName,
-        email: user.email,
-        studentId: user.studentId,
-        onboardingCompleted: user.onboardingCompleted,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     console.error("Signup error:", error);
@@ -117,34 +211,179 @@ export const signin = async (req: Request, res: Response) => {
       avatar: user.avatar,
     })
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: authCookieSameSite,
-      maxAge: authCookieMaxAge, // 4 days
-    })
+    setAuthCookie(res, token);
 
     return res.status(200).json({
       message: "Signin successful",
       token,
-      user: {
-        id: (user._id as any).toString().toString(),
-        fullName: user.fullName,
-        email: user.email,
-        studentId: user.studentId,
-        program: user.program,
-        semester: user.semester,
-        interests: user.interests,
-        handle: user.handle,
-        avatar: user.avatar,
-        bio: user.bio,
-        theme: user.theme,
-        onboardingCompleted: user.onboardingCompleted,
-      },
+      user: serializeAuthUser(user),
     });
   } catch (error) {
     console.error("Signin error:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const githubAuth = async (_req: Request, res: Response) => {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return res.status(500).json({ message: "GitHub OAuth is not configured" });
+  }
+
+  const state = randomBytes(24).toString("hex");
+  const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
+  authorizeUrl.searchParams.set("client_id", clientId);
+  authorizeUrl.searchParams.set("redirect_uri", getGithubCallbackUrl());
+  authorizeUrl.searchParams.set("scope", "read:user user:email");
+  authorizeUrl.searchParams.set("state", state);
+
+  res.cookie(githubStateCookieName, state, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: authCookieSameSite,
+    maxAge: githubStateMaxAge,
+  });
+
+  return res.redirect(authorizeUrl.toString());
+};
+
+export const githubCallback = async (req: Request, res: Response) => {
+  try {
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const savedState = req.cookies?.[githubStateCookieName];
+
+    clearGithubStateCookie(res);
+
+    if (!code || !state || !savedState || state !== savedState) {
+      return redirectToAuthCallback(res, {
+        provider: "github",
+        error: "invalid_oauth_state",
+      });
+    }
+
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      return redirectToAuthCallback(res, {
+        provider: "github",
+        error: "github_not_configured",
+      });
+    }
+
+    const tokenResponse = await axios.post<GithubTokenResponse>(
+      "https://github.com/login/oauth/access_token",
+      {
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: getGithubCallbackUrl(),
+      },
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (tokenResponse.data.error || !tokenResponse.data.access_token) {
+      console.error("GitHub token exchange failed:", tokenResponse.data.error);
+      return redirectToAuthCallback(res, {
+        provider: "github",
+        error: "github_token_exchange_failed",
+      });
+    }
+
+    const githubHeaders = {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${tokenResponse.data.access_token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+
+    const [profileResponse, emailResponse] = await Promise.all([
+      axios.get<GithubProfile>("https://api.github.com/user", {
+        headers: githubHeaders,
+      }),
+      axios.get<GithubEmail[]>("https://api.github.com/user/emails", {
+        headers: githubHeaders,
+      }),
+    ]);
+
+    const profile = profileResponse.data;
+    const githubId = String(profile.id);
+    const email = pickGithubEmail(profile.email, emailResponse.data)?.toLowerCase();
+
+    if (!email) {
+      return redirectToAuthCallback(res, {
+        provider: "github",
+        error: "github_email_unavailable",
+      });
+    }
+
+    let user = await User.findOne({ githubId });
+
+    if (!user) {
+      user = await User.findOne({ email });
+    }
+
+    if (user) {
+      let shouldSave = false;
+
+      if (!user.githubId) {
+        user.githubId = githubId;
+        shouldSave = true;
+      }
+
+      if (user.authProvider !== "github") {
+        user.authProvider = "github";
+        shouldSave = true;
+      }
+
+      if (!user.avatar && profile.avatar_url) {
+        user.avatar = profile.avatar_url;
+        shouldSave = true;
+      }
+
+      if (shouldSave) {
+        await user.save();
+      }
+    } else {
+      const randomPasswordHash = await bcrypt.hash(
+        randomBytes(32).toString("hex"),
+        10
+      );
+
+      user = await User.create({
+        fullName: profile.name || profile.login,
+        email,
+        githubId,
+        authProvider: "github",
+        avatar: profile.avatar_url || "",
+        password: randomPasswordHash,
+      });
+    }
+
+    const token = signToken({
+      id: (user._id as any).toString(),
+      email: user.email,
+      fullName: user.fullName,
+      avatar: user.avatar,
+    });
+
+    setAuthCookie(res, token);
+
+    return redirectToAuthCallback(res, {
+      provider: "github",
+    });
+  } catch (error) {
+    console.error("GitHub OAuth callback error:", error);
+    return redirectToAuthCallback(res, {
+      provider: "github",
+      error: "github_oauth_failed",
+    });
   }
 };
 
@@ -162,7 +401,10 @@ export const logout = async (_: Request, res: Response) => {
 
 export const me = async (req: Request, res: Response) => {
   try {
-    const token = req.cookies["token"];
+    const bearerToken = req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.split(" ")[1]
+      : undefined;
+    const token = req.cookies["token"] || bearerToken;
 
     if (!token) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -178,17 +420,8 @@ export const me = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: "User found",
-      user: {
-        id: user._id.toString(),
-        fullName: user.fullName,
-        email: user.email,
-        studentId: user.studentId,
-        handle: user.handle,
-        avatar: user.avatar,
-        bio: user.bio,
-        theme: user.theme,
-        onboardingCompleted: user.onboardingCompleted,
-      },
+      token,
+      user: serializeAuthUser(user),
     });
 
   } catch {
