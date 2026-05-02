@@ -10,7 +10,8 @@ const isProduction = process.env.NODE_ENV === "production";
 const authCookieMaxAge = 4 * 24 * 60 * 60 * 1000;
 const authCookieSameSite = isProduction ? "none" : "lax";
 const githubStateCookieName = "github_oauth_state";
-const githubStateMaxAge = 10 * 60 * 1000;
+const googleStateCookieName = "google_oauth_state";
+const oauthStateMaxAge = 10 * 60 * 1000;
 
 type GithubTokenResponse = {
   access_token?: string;
@@ -30,6 +31,20 @@ type GithubEmail = {
   email: string;
   primary: boolean;
   verified: boolean;
+};
+
+type GoogleTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type GoogleProfile = {
+  sub: string;
+  name?: string;
+  email?: string;
+  email_verified?: boolean;
+  picture?: string;
 };
 
 const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, "");
@@ -60,6 +75,16 @@ const getGithubCallbackUrl = () => {
   return callbackUrl;
 };
 
+const getGoogleCallbackUrl = () => {
+  const callbackUrl = process.env.GOOGLE_CALLBACK_URL?.trim();
+
+  if (!callbackUrl) {
+    throw new Error("GOOGLE_CALLBACK_URL is not defined");
+  }
+
+  return callbackUrl;
+};
+
 const setAuthCookie = (res: Response, token: string) => {
   res.cookie("token", token, {
     httpOnly: true,
@@ -71,6 +96,14 @@ const setAuthCookie = (res: Response, token: string) => {
 
 const clearGithubStateCookie = (res: Response) => {
   res.clearCookie(githubStateCookieName, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: authCookieSameSite,
+  });
+};
+
+const clearGoogleStateCookie = (res: Response) => {
+  res.clearCookie(googleStateCookieName, {
     httpOnly: true,
     secure: isProduction,
     sameSite: authCookieSameSite,
@@ -243,7 +276,7 @@ export const githubAuth = async (_req: Request, res: Response) => {
     httpOnly: true,
     secure: isProduction,
     sameSite: authCookieSameSite,
-    maxAge: githubStateMaxAge,
+    maxAge: oauthStateMaxAge,
   });
 
   return res.redirect(authorizeUrl.toString());
@@ -383,6 +416,181 @@ export const githubCallback = async (req: Request, res: Response) => {
     return redirectToAuthCallback(res, {
       provider: "github",
       error: "github_oauth_failed",
+    });
+  }
+};
+
+export const googleAuth = async (_req: Request, res: Response) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return res.status(500).json({ message: "Google OAuth is not configured" });
+  }
+
+  let callbackUrl: string;
+  try {
+    callbackUrl = getGoogleCallbackUrl();
+  } catch {
+    return res.status(500).json({ message: "GOOGLE_CALLBACK_URL is not configured" });
+  }
+
+  const state = randomBytes(24).toString("hex");
+  const authorizeUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authorizeUrl.searchParams.set("client_id", clientId);
+  authorizeUrl.searchParams.set("redirect_uri", callbackUrl);
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("scope", "openid email profile");
+  authorizeUrl.searchParams.set("state", state);
+  authorizeUrl.searchParams.set("prompt", "select_account");
+
+  res.cookie(googleStateCookieName, state, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: authCookieSameSite,
+    maxAge: oauthStateMaxAge,
+  });
+
+  return res.redirect(authorizeUrl.toString());
+};
+
+export const googleCallback = async (req: Request, res: Response) => {
+  try {
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const savedState = req.cookies?.[googleStateCookieName];
+
+    clearGoogleStateCookie(res);
+
+    if (!code || !state || !savedState || state !== savedState) {
+      return redirectToAuthCallback(res, {
+        provider: "google",
+        error: "invalid_oauth_state",
+      });
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      return redirectToAuthCallback(res, {
+        provider: "google",
+        error: "google_not_configured",
+      });
+    }
+
+    const callbackUrl = getGoogleCallbackUrl();
+    const tokenResponse = await axios.post<GoogleTokenResponse>(
+      "https://oauth2.googleapis.com/token",
+      new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: callbackUrl,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
+
+    if (tokenResponse.data.error || !tokenResponse.data.access_token) {
+      console.error("Google token exchange failed:", tokenResponse.data.error);
+      return redirectToAuthCallback(res, {
+        provider: "google",
+        error: "google_token_exchange_failed",
+      });
+    }
+
+    const profileResponse = await axios.get<GoogleProfile>(
+      "https://www.googleapis.com/oauth2/v3/userinfo",
+      {
+        headers: {
+          Authorization: `Bearer ${tokenResponse.data.access_token}`,
+        },
+      }
+    );
+
+    const profile = profileResponse.data;
+    const googleId = profile.sub;
+    const email = profile.email?.toLowerCase();
+
+    if (!googleId || !email) {
+      return redirectToAuthCallback(res, {
+        provider: "google",
+        error: "google_profile_unavailable",
+      });
+    }
+
+    if (profile.email_verified === false) {
+      return redirectToAuthCallback(res, {
+        provider: "google",
+        error: "google_email_unverified",
+      });
+    }
+
+    let user = await User.findOne({ googleId });
+
+    if (!user) {
+      user = await User.findOne({ email });
+    }
+
+    if (user) {
+      let shouldSave = false;
+
+      if (!user.googleId) {
+        user.googleId = googleId;
+        shouldSave = true;
+      }
+
+      if (user.authProvider !== "google") {
+        user.authProvider = "google";
+        shouldSave = true;
+      }
+
+      if (!user.avatar && profile.picture) {
+        user.avatar = profile.picture;
+        shouldSave = true;
+      }
+
+      if (shouldSave) {
+        await user.save();
+      }
+    } else {
+      const randomPasswordHash = await bcrypt.hash(
+        randomBytes(32).toString("hex"),
+        10
+      );
+
+      user = await User.create({
+        fullName: profile.name || email.split("@")[0],
+        email,
+        googleId,
+        authProvider: "google",
+        avatar: profile.picture || "",
+        password: randomPasswordHash,
+      });
+    }
+
+    const token = signToken({
+      id: (user._id as any).toString(),
+      email: user.email,
+      fullName: user.fullName,
+      avatar: user.avatar,
+    });
+
+    setAuthCookie(res, token);
+
+    return redirectToAuthCallback(res, {
+      provider: "google",
+    });
+  } catch (error) {
+    console.error("Google OAuth callback error:", error);
+    return redirectToAuthCallback(res, {
+      provider: "google",
+      error: "google_oauth_failed",
     });
   }
 };

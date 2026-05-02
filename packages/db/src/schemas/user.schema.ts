@@ -44,9 +44,15 @@ export const UserSchema = new Schema<IUser>(
       unique: true,
       sparse: true,
     },
+    googleId: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+    },
     authProvider: {
       type: String,
-      enum: ["credentials", "github"],
+      enum: ["credentials", "github", "google"],
       default: "credentials",
     },
     password: {

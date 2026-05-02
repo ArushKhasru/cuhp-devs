@@ -11,7 +11,12 @@ const oauthErrorMessages: Record<string, string> = {
     github_not_configured: "GitHub OAuth is not configured on the backend.",
     github_oauth_failed: "GitHub sign in failed. Please try again.",
     github_token_exchange_failed: "GitHub sign in failed while exchanging the authorization code.",
-    invalid_oauth_state: "GitHub sign in expired. Please try again.",
+    google_email_unverified: "Google did not return a verified email address.",
+    google_not_configured: "Google OAuth is not configured on the backend.",
+    google_oauth_failed: "Google sign in failed. Please try again.",
+    google_profile_unavailable: "Google did not return the required profile details.",
+    google_token_exchange_failed: "Google sign in failed while exchanging the authorization code.",
+    invalid_oauth_state: "OAuth sign in expired. Please try again.",
 };
 
 export function AuthCallbackClient() {
@@ -62,7 +67,7 @@ export function AuthCallbackClient() {
         <main className="min-h-screen bg-[#050816] text-slate-100 flex items-center justify-center px-6">
             <div className="max-w-md w-full rounded-2xl border border-blue-800/30 bg-[#101322] p-8 text-center shadow-2xl shadow-blue-950/30">
                 <p className="text-xs uppercase tracking-[0.35em] text-blue-300">Authentication</p>
-                <h1 className="mt-4 text-2xl font-semibold">Finishing GitHub sign in</h1>
+                <h1 className="mt-4 text-2xl font-semibold">Finishing sign in</h1>
                 <p className="mt-3 text-sm text-slate-400">
                     Verifying your session and redirecting you to the right page.
                 </p>

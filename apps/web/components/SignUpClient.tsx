@@ -57,7 +57,12 @@ export function SignUpClient() {
             return;
         }
 
-        toast.info(`${provider} OAuth is not implemented yet.`);
+        if (provider === "google") {
+            window.location.href = `${API_URL}/auth/google`;
+            return;
+        }
+
+        toast.info(`${provider} OAuth is not configured.`);
     };
 
     return (
