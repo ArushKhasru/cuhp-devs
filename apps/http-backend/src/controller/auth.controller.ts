@@ -11,6 +11,8 @@ const authCookieMaxAge = 4 * 24 * 60 * 60 * 1000;
 const authCookieSameSite = isProduction ? "none" : "lax";
 const githubStateCookieName = "github_oauth_state";
 const googleStateCookieName = "google_oauth_state";
+const githubRedirectCookieName = "github_oauth_redirect";
+const googleRedirectCookieName = "google_oauth_redirect";
 const oauthStateMaxAge = 10 * 60 * 1000;
 
 type GithubTokenResponse = {
@@ -49,6 +51,20 @@ type GoogleProfile = {
 
 const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, "");
 
+const isLocalhostHostname = (hostname: string) =>
+  hostname === "localhost" ||
+  hostname === "127.0.0.1" ||
+  hostname === "::1" ||
+  hostname === "[::1]";
+
+const isLocalhostUrl = (url: string) => {
+  try {
+    return isLocalhostHostname(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+};
+
 const getFrontendUrl = () =>
   normalizeBaseUrl(
     process.env.FRONTEND_URL ||
@@ -56,6 +72,43 @@ const getFrontendUrl = () =>
     process.env.NEXT_PUBLIC_APP_URL ||
     ""
   );
+
+const getRequestFrontendOrigin = (req: Request) => {
+  const originHeader = req.get("origin");
+  if (originHeader?.trim()) {
+    return normalizeBaseUrl(originHeader);
+  }
+
+  const refererHeader = req.get("referer");
+  if (refererHeader?.trim()) {
+    try {
+      return normalizeBaseUrl(new URL(refererHeader).origin);
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+};
+
+const getOAuthFrontendUrl = (req: Request) => {
+  const configuredFrontendUrl = getFrontendUrl();
+  const requestFrontendOrigin = getRequestFrontendOrigin(req);
+
+  if (configuredFrontendUrl && (!isProduction || !isLocalhostUrl(configuredFrontendUrl))) {
+    return configuredFrontendUrl;
+  }
+
+  if (requestFrontendOrigin) {
+    return requestFrontendOrigin;
+  }
+
+  if (configuredFrontendUrl) {
+    return configuredFrontendUrl;
+  }
+
+  throw new Error("FRONTEND_URL is not defined");
+};
 
 // const getBackendUrl = () =>
 //   normalizeBaseUrl(
@@ -110,11 +163,30 @@ const clearGoogleStateCookie = (res: Response) => {
   });
 };
 
+const clearOAuthRedirectCookie = (res: Response, cookieName: string) => {
+  res.clearCookie(cookieName, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: authCookieSameSite,
+  });
+};
+
+const setOAuthRedirectCookie = (res: Response, cookieName: string, frontendUrl: string) => {
+  res.cookie(cookieName, frontendUrl, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: authCookieSameSite,
+    maxAge: oauthStateMaxAge,
+  });
+};
+
 const redirectToAuthCallback = (
   res: Response,
-  params: Record<string, string>
+  params: Record<string, string>,
+  frontendUrl?: string
 ) => {
-  const url = new URL(`${getFrontendUrl()}/auth/callback`);
+  const targetFrontend = normalizeBaseUrl(frontendUrl || getFrontendUrl());
+  const url = new URL(`${targetFrontend}/auth/callback`);
   Object.entries(params).forEach(([key, value]) => {
     url.searchParams.set(key, value);
   });
@@ -257,12 +329,19 @@ export const signin = async (req: Request, res: Response) => {
   }
 };
 
-export const githubAuth = async (_req: Request, res: Response) => {
+export const githubAuth = async (req: Request, res: Response) => {
   const clientId = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
     return res.status(500).json({ message: "GitHub OAuth is not configured" });
+  }
+
+  let frontendUrl: string;
+  try {
+    frontendUrl = getOAuthFrontendUrl(req);
+  } catch {
+    return res.status(500).json({ message: "FRONTEND_URL is not configured" });
   }
 
   const state = randomBytes(24).toString("hex");
@@ -272,6 +351,7 @@ export const githubAuth = async (_req: Request, res: Response) => {
   authorizeUrl.searchParams.set("scope", "read:user user:email");
   authorizeUrl.searchParams.set("state", state);
 
+  setOAuthRedirectCookie(res, githubRedirectCookieName, frontendUrl);
   res.cookie(githubStateCookieName, state, {
     httpOnly: true,
     secure: isProduction,
@@ -283,18 +363,24 @@ export const githubAuth = async (_req: Request, res: Response) => {
 };
 
 export const githubCallback = async (req: Request, res: Response) => {
+  const frontendUrl =
+    typeof req.cookies?.[githubRedirectCookieName] === "string"
+      ? req.cookies[githubRedirectCookieName]
+      : "";
+
   try {
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const state = typeof req.query.state === "string" ? req.query.state : "";
     const savedState = req.cookies?.[githubStateCookieName];
 
+    clearOAuthRedirectCookie(res, githubRedirectCookieName);
     clearGithubStateCookie(res);
 
     if (!code || !state || !savedState || state !== savedState) {
       return redirectToAuthCallback(res, {
         provider: "github",
         error: "invalid_oauth_state",
-      });
+      }, frontendUrl);
     }
 
     const clientId = process.env.GITHUB_CLIENT_ID;
@@ -304,7 +390,7 @@ export const githubCallback = async (req: Request, res: Response) => {
       return redirectToAuthCallback(res, {
         provider: "github",
         error: "github_not_configured",
-      });
+      }, frontendUrl);
     }
 
     const tokenResponse = await axios.post<GithubTokenResponse>(
@@ -327,7 +413,7 @@ export const githubCallback = async (req: Request, res: Response) => {
       return redirectToAuthCallback(res, {
         provider: "github",
         error: "github_token_exchange_failed",
-      });
+      }, frontendUrl);
     }
 
     const githubHeaders = {
@@ -353,7 +439,7 @@ export const githubCallback = async (req: Request, res: Response) => {
       return redirectToAuthCallback(res, {
         provider: "github",
         error: "github_email_unavailable",
-      });
+      }, frontendUrl);
     }
 
     let user = await User.findOne({ githubId });
@@ -410,17 +496,17 @@ export const githubCallback = async (req: Request, res: Response) => {
 
     return redirectToAuthCallback(res, {
       provider: "github",
-    });
+    }, frontendUrl);
   } catch (error) {
     console.error("GitHub OAuth callback error:", error);
     return redirectToAuthCallback(res, {
       provider: "github",
       error: "github_oauth_failed",
-    });
+    }, frontendUrl);
   }
 };
 
-export const googleAuth = async (_req: Request, res: Response) => {
+export const googleAuth = async (req: Request, res: Response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -435,6 +521,13 @@ export const googleAuth = async (_req: Request, res: Response) => {
     return res.status(500).json({ message: "GOOGLE_CALLBACK_URL is not configured" });
   }
 
+  let frontendUrl: string;
+  try {
+    frontendUrl = getOAuthFrontendUrl(req);
+  } catch {
+    return res.status(500).json({ message: "FRONTEND_URL is not configured" });
+  }
+
   const state = randomBytes(24).toString("hex");
   const authorizeUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authorizeUrl.searchParams.set("client_id", clientId);
@@ -444,6 +537,7 @@ export const googleAuth = async (_req: Request, res: Response) => {
   authorizeUrl.searchParams.set("state", state);
   authorizeUrl.searchParams.set("prompt", "select_account");
 
+  setOAuthRedirectCookie(res, googleRedirectCookieName, frontendUrl);
   res.cookie(googleStateCookieName, state, {
     httpOnly: true,
     secure: isProduction,
@@ -455,18 +549,24 @@ export const googleAuth = async (_req: Request, res: Response) => {
 };
 
 export const googleCallback = async (req: Request, res: Response) => {
+  const frontendUrl =
+    typeof req.cookies?.[googleRedirectCookieName] === "string"
+      ? req.cookies[googleRedirectCookieName]
+      : "";
+
   try {
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const state = typeof req.query.state === "string" ? req.query.state : "";
     const savedState = req.cookies?.[googleStateCookieName];
 
+    clearOAuthRedirectCookie(res, googleRedirectCookieName);
     clearGoogleStateCookie(res);
 
     if (!code || !state || !savedState || state !== savedState) {
       return redirectToAuthCallback(res, {
         provider: "google",
         error: "invalid_oauth_state",
-      });
+      }, frontendUrl);
     }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -476,7 +576,7 @@ export const googleCallback = async (req: Request, res: Response) => {
       return redirectToAuthCallback(res, {
         provider: "google",
         error: "google_not_configured",
-      });
+      }, frontendUrl);
     }
 
     const callbackUrl = getGoogleCallbackUrl();
@@ -501,7 +601,7 @@ export const googleCallback = async (req: Request, res: Response) => {
       return redirectToAuthCallback(res, {
         provider: "google",
         error: "google_token_exchange_failed",
-      });
+      }, frontendUrl);
     }
 
     const profileResponse = await axios.get<GoogleProfile>(
@@ -521,14 +621,14 @@ export const googleCallback = async (req: Request, res: Response) => {
       return redirectToAuthCallback(res, {
         provider: "google",
         error: "google_profile_unavailable",
-      });
+      }, frontendUrl);
     }
 
     if (profile.email_verified === false) {
       return redirectToAuthCallback(res, {
         provider: "google",
         error: "google_email_unverified",
-      });
+      }, frontendUrl);
     }
 
     let user = await User.findOne({ googleId });
@@ -585,13 +685,13 @@ export const googleCallback = async (req: Request, res: Response) => {
 
     return redirectToAuthCallback(res, {
       provider: "google",
-    });
+    }, frontendUrl);
   } catch (error) {
     console.error("Google OAuth callback error:", error);
     return redirectToAuthCallback(res, {
       provider: "google",
       error: "google_oauth_failed",
-    });
+    }, frontendUrl);
   }
 };
 
