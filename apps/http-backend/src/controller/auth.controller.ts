@@ -65,49 +65,17 @@ const isLocalhostUrl = (url: string) => {
   }
 };
 
-const getFrontendUrl = () =>
-  normalizeBaseUrl(
+const getFrontendUrl = () => {
+  const url =
     process.env.FRONTEND_URL ||
     process.env.CLIENT_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    ""
-  );
+    process.env.NEXT_PUBLIC_APP_URL;
 
-const getRequestFrontendOrigin = (req: Request) => {
-  const originHeader = req.get("origin");
-  if (originHeader?.trim()) {
-    return normalizeBaseUrl(originHeader);
+  if (!url) {
+    throw new Error("FRONTEND_URL is not defined");
   }
 
-  const refererHeader = req.get("referer");
-  if (refererHeader?.trim()) {
-    try {
-      return normalizeBaseUrl(new URL(refererHeader).origin);
-    } catch {
-      return "";
-    }
-  }
-
-  return "";
-};
-
-const getOAuthFrontendUrl = (req: Request) => {
-  const configuredFrontendUrl = getFrontendUrl();
-  const requestFrontendOrigin = getRequestFrontendOrigin(req);
-
-  if (configuredFrontendUrl && (!isProduction || !isLocalhostUrl(configuredFrontendUrl))) {
-    return configuredFrontendUrl;
-  }
-
-  if (requestFrontendOrigin) {
-    return requestFrontendOrigin;
-  }
-
-  if (configuredFrontendUrl) {
-    return configuredFrontendUrl;
-  }
-
-  throw new Error("FRONTEND_URL is not defined");
+  return normalizeBaseUrl(url);
 };
 
 // const getBackendUrl = () =>
@@ -337,12 +305,7 @@ export const githubAuth = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "GitHub OAuth is not configured" });
   }
 
-  let frontendUrl: string;
-  try {
-    frontendUrl = getOAuthFrontendUrl(req);
-  } catch {
-    return res.status(500).json({ message: "FRONTEND_URL is not configured" });
-  }
+
 
   const state = randomBytes(24).toString("hex");
   const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
@@ -351,7 +314,7 @@ export const githubAuth = async (req: Request, res: Response) => {
   authorizeUrl.searchParams.set("scope", "read:user user:email");
   authorizeUrl.searchParams.set("state", state);
 
-  setOAuthRedirectCookie(res, githubRedirectCookieName, frontendUrl);
+  setOAuthRedirectCookie(res, githubRedirectCookieName, getFrontendUrl());
   res.cookie(githubStateCookieName, state, {
     httpOnly: true,
     secure: isProduction,
@@ -521,12 +484,7 @@ export const googleAuth = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "GOOGLE_CALLBACK_URL is not configured" });
   }
 
-  let frontendUrl: string;
-  try {
-    frontendUrl = getOAuthFrontendUrl(req);
-  } catch {
-    return res.status(500).json({ message: "FRONTEND_URL is not configured" });
-  }
+
 
   const state = randomBytes(24).toString("hex");
   const authorizeUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -537,7 +495,7 @@ export const googleAuth = async (req: Request, res: Response) => {
   authorizeUrl.searchParams.set("state", state);
   authorizeUrl.searchParams.set("prompt", "select_account");
 
-  setOAuthRedirectCookie(res, googleRedirectCookieName, frontendUrl);
+  setOAuthRedirectCookie(res, googleRedirectCookieName, getFrontendUrl());
   res.cookie(googleStateCookieName, state, {
     httpOnly: true,
     secure: isProduction,
