@@ -36,7 +36,7 @@ export default function Feed({
   // Filter posts based on tab
   // Note: "Snippet" tab maps to "Snippet" type, "Questions" tab maps to "Question" type
   const filteredPosts = data.posts.filter(post => {
-    if (activeTab === "debugging") return true; // Show all for debugging or handle specifically
+    if (activeTab === "Recent" || activeTab === "debugging") return true;
     const targetType = activeTab === "Questions" ? "Question" : "Snippet";
     return post.type === targetType;
   });
