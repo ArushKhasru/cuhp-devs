@@ -15,11 +15,13 @@ const DEFAULT_ROOMS_DATA = {
 export function CommunityChatRoomsClient() {
     const token = useAuthStore((state) => state.token);
     const [roomsData, setRoomsData] = useState(DEFAULT_ROOMS_DATA);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         let isMounted = true;
 
         const loadRooms = async () => {
+            setIsLoading(true);
             try {
                 const data = await apiFetch("/user/community/rooms");
                 if (isMounted && data) {
@@ -27,6 +29,10 @@ export function CommunityChatRoomsClient() {
                 }
             } catch (error) {
                 console.error("Failed to fetch community rooms:", error);
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
         };
 
@@ -37,5 +43,5 @@ export function CommunityChatRoomsClient() {
         };
     }, []);
 
-    return <ChatRooms data={roomsData} token={token} />;
+    return <ChatRooms data={roomsData} token={token} isLoading={isLoading} />;
 }

@@ -102,63 +102,59 @@ export default async function PracticePage({
     const otherProblems = filteredProblems.slice(1);
 
   return (
-    <div className="bg-background text-foreground h-screen flex font-sans overflow-hidden transition-colors duration-300">
-        <SidebarWrapper user={sidebarUser} />
+    <main className="flex-1 flex flex-col min-w-0 h-full">
+        {/* Header Section */}
+        <PracticeHeader />
 
-        <main className="flex-1 flex flex-col min-w-0">
-            {/* Header Section */}
-            <PracticeHeader />
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-12 scrollbar-hide">
+            <div className="max-w-7xl mx-auto space-y-12">
+                {/* Search & Tabs (Client-Side Wrapper) */}
+                <PracticeFiltersWrapper
+                    activeCategory={category || "All Topics"}
+                />
 
-                {/* Content Area */}
-                <div className="flex-1 overflow-y-auto p-8 space-y-12 scrollbar-hide">
-                    <div className="max-w-7xl mx-auto space-y-12">
-                        {/* Search & Tabs (Client-Side Wrapper) */}
-                        <PracticeFiltersWrapper
-                            activeCategory={category || "All Topics"}
+                {/* Problems Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                    {dailyProblem && (
+                        <ProblemCard
+                            key={dailyProblem._id}
+                            problem={{
+                                ...(dailyProblem as Problem),
+                                isDaily: true,
+                                successRate: "72.4%"
+                            }}
+                            href={`/problem/${dailyProblem.slug}`}
                         />
-
-                        {/* Problems Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                            {dailyProblem && (
-                                <ProblemCard
-                                    key={dailyProblem._id}
-                                    problem={{
-                                        ...(dailyProblem as Problem),
-                                        isDaily: true,
-                                        successRate: "72.4%"
-                                    }}
-                                    href={`/problem/${dailyProblem.slug}`}
-                                />
-                            )}
-                            {otherProblems.map(p => (
-                                <ProblemCard
-                                    key={p._id}
-                                    problem={{
-                                        ...(p as Problem),
-                                        successRate: "85.2%"
-                                    }}
-                                    href={`/problem/${p.slug}`}
-                                />
-                            ))}
-                            {filteredProblems.length === 0 && (
-                                <div className="col-span-full py-20 text-center">
-                                    <SearchX className="mx-auto mb-4 text-slate-700" size={64} />
-                                    <h2 className="text-xl font-bold text-slate-400">No challenges found matching your search.</h2>
-                                    <p className="text-slate-500">Try a different keyword or category.</p>
-                                </div>
-                            )}
+                    )}
+                    {otherProblems.map(p => (
+                        <ProblemCard
+                            key={p._id}
+                            problem={{
+                                ...(p as Problem),
+                                successRate: "85.2%"
+                            }}
+                            href={`/problem/${p.slug}`}
+                        />
+                    ))}
+                    {filteredProblems.length === 0 && (
+                        <div className="col-span-full py-20 text-center">
+                            <SearchX className="mx-auto mb-4 text-slate-700" size={64} />
+                            <h2 className="text-xl font-bold text-slate-400">No challenges found matching your search.</h2>
+                            <p className="text-slate-500">Try a different keyword or category.</p>
                         </div>
-
-                        {/* Load More */}
-                        <div className="flex items-center justify-center py-10">
-                            <button className="px-8 py-3 border border-primary-custom/20 bg-primary-custom/5 text-primary-custom rounded-xl font-bold hover:bg-primary-custom/10 transition-all flex items-center gap-2 shadow-lg shadow-primary-custom/5">
-                                <span>Load More Challenges</span>
-                                <ChevronDown size={20} />
-                            </button>
-                        </div>
-                    </div>
+                    )}
                 </div>
-            </main>
+
+                {/* Load More */}
+                <div className="flex items-center justify-center py-10">
+                    <button className="px-8 py-3 border border-primary-custom/20 bg-primary-custom/5 text-primary-custom rounded-xl font-bold hover:bg-primary-custom/10 transition-all flex items-center gap-2 shadow-lg shadow-primary-custom/5">
+                        <span>Load More Challenges</span>
+                        <ChevronDown size={20} />
+                    </button>
+                </div>
+            </div>
         </div>
-    );
+    </main>
+  );
 }

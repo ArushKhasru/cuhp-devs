@@ -20,6 +20,7 @@ interface FeedClientProps {
 export default function FeedClient({ initialData }: FeedClientProps) {
     const [posts, setPosts] = useState(initialData.posts);
     const [activeTab, setActiveTab] = useState<FeedTab>("Recent");
+    const [isLoading, setIsLoading] = useState(true);
     const { user, token, setUser } = useAuthStore();
     const socketRef = useRef<Socket | null>(null);
     const hasLoggedConnectErrorRef = useRef(false);
@@ -86,6 +87,7 @@ export default function FeedClient({ initialData }: FeedClientProps) {
 
     useEffect(() => {
         const loadPosts = async () => {
+            setIsLoading(true);
             try {
                 const fetchedPosts = await apiFetch("/posts");
                 if (Array.isArray(fetchedPosts)) {
@@ -93,6 +95,8 @@ export default function FeedClient({ initialData }: FeedClientProps) {
                 }
             } catch (error) {
                 console.error("Failed to fetch posts:", error);
+            } finally {
+                setIsLoading(false);
             }
         };
 
@@ -179,6 +183,7 @@ export default function FeedClient({ initialData }: FeedClientProps) {
     return (
         <Feed
             data={{ ...initialData, posts }}
+            isLoading={isLoading}
             onPost={handlePost}
             onLike={handleLike}
             onBookmark={handleBookmark}

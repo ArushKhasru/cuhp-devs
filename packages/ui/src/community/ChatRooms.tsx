@@ -17,6 +17,7 @@ interface ChatRoomsProps {
     liveActivity: any[];
   };
   token: string | null;
+  isLoading?: boolean;
 }
 
 function EmptyRoomsPlaceholder({ message }: { message: string }) {
@@ -124,7 +125,7 @@ function CreateRoomModal({ isOpen, onClose, onCreate }: { isOpen: boolean, onClo
   );
 }
 
-export default function ChatRooms({ data: initialData, token }: ChatRoomsProps) {
+export default function ChatRooms({ data: initialData, token, isLoading }: ChatRoomsProps) {
   const [data, setData] = useState(initialData);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const { socket, isConnected } = useSocket(token);
@@ -213,7 +214,7 @@ export default function ChatRooms({ data: initialData, token }: ChatRoomsProps) 
   }, [socket, isConnected]);
 
   return (
-    <main className="flex-1 min-h-0 flex flex-col xl:flex-row gap-8 p-4 md:p-8 overflow-y-auto w-full custom-scrollbar bg-transparent">
+    <main className="flex-1 min-h-0 flex flex-col xl:flex-row gap-8 p-4 md:p-8 overflow-y-auto w-full custom-scrollbar bg-transparent animate-fade-in">
       <div className="flex-1 space-y-12">
         {/* Trending Section */}
         <section>
@@ -233,7 +234,21 @@ export default function ChatRooms({ data: initialData, token }: ChatRoomsProps) 
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {data.trendingRooms.length > 0 ? (
+            {isLoading ? (
+              [1, 2].map((i) => (
+                <div key={i} className="bg-card-custom border border-card-border rounded-3xl p-6 h-48 animate-pulse space-y-4 flex flex-col justify-center">
+                  <div className="flex gap-4 items-center">
+                    <div className="w-14 h-14 bg-slate-800 rounded-2xl" />
+                    <div className="space-y-2 flex-1">
+                      <div className="h-5 w-32 bg-slate-800 rounded-lg" />
+                      <div className="h-3 w-16 bg-slate-800/60 rounded-md" />
+                    </div>
+                  </div>
+                  <div className="h-3.5 w-full bg-slate-800/40 rounded-md" />
+                  <div className="h-3.5 w-2/3 bg-slate-800/40 rounded-md" />
+                </div>
+              ))
+            ) : data.trendingRooms.length > 0 ? (
               data.trendingRooms.map((room: any, i: number) => (
                 <div
                   key={room.id}
@@ -275,7 +290,19 @@ export default function ChatRooms({ data: initialData, token }: ChatRoomsProps) 
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {data.communityRooms.length > 0 ? (
+            {isLoading ? (
+              [1, 2, 3].map((i) => (
+                <div key={i} className="bg-card-custom border border-card-border rounded-2xl p-5 h-56 animate-pulse space-y-4 flex flex-col justify-center">
+                  <div className="w-10 h-10 bg-slate-800 rounded-xl" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-28 bg-slate-800 rounded-md" />
+                    <div className="h-3.5 w-full bg-slate-800/50 rounded-md" />
+                    <div className="h-3.5 w-5/6 bg-slate-800/50 rounded-md" />
+                  </div>
+                  <div className="h-4 w-16 bg-slate-800 rounded-full" />
+                </div>
+              ))
+            ) : data.communityRooms.length > 0 ? (
               <>
                 {data.communityRooms.map((room: any, i: number) => (
                   <div

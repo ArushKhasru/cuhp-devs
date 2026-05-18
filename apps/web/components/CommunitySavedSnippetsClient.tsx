@@ -12,11 +12,13 @@ const DEFAULT_SNIPPETS_DATA = {
 
 export function CommunitySavedSnippetsClient() {
     const [snippetsData, setSnippetsData] = useState(DEFAULT_SNIPPETS_DATA);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         let isMounted = true;
 
         const loadSnippets = async () => {
+            setIsLoading(true);
             try {
                 const data = await apiFetch("/user/community/snippets");
                 if (isMounted && data) {
@@ -24,6 +26,10 @@ export function CommunitySavedSnippetsClient() {
                 }
             } catch (error) {
                 console.error("Failed to fetch community snippets:", error);
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
         };
 
@@ -34,5 +40,5 @@ export function CommunitySavedSnippetsClient() {
         };
     }, []);
 
-    return <SavedSnippets data={snippetsData} />;
+    return <SavedSnippets data={snippetsData} isLoading={isLoading} />;
 }

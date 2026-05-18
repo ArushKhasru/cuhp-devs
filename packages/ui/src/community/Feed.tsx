@@ -10,6 +10,7 @@ interface FeedProps {
     leaderboard: any[];
     events: any[];
   };
+  isLoading?: boolean;
   onPost?: (data: { content: string; type: string }) => Promise<void>;
   onLike?: (postId: string) => Promise<void>;
   onBookmark?: (postId: string) => Promise<void>;
@@ -23,6 +24,7 @@ interface FeedProps {
 
 export default function Feed({
   data,
+  isLoading,
   onPost,
   onLike,
   onBookmark,
@@ -42,7 +44,7 @@ export default function Feed({
   });
 
   return (
-    <main className="flex-1 flex flex-col md:flex-row gap-8 p-4 md:p-8 overflow-y-auto w-full">
+    <main className="flex-1 flex flex-col md:flex-row gap-8 p-4 md:p-8 overflow-y-auto w-full animate-fade-in">
       {/* Feed Area */}
       <section className="flex-1 space-y-6 max-w-3xl">
         <FeedCompose onPost={onPost} userAvatar={userAvatar} userName={userName} />
@@ -50,7 +52,28 @@ export default function Feed({
 
         {/* Posts */}
         <div className="space-y-6">
-          {filteredPosts.length > 0 ? (
+          {isLoading ? (
+            [1, 2, 3].map((i) => (
+              <div key={i} className="bg-card-custom border border-card-border rounded-3xl p-6 space-y-4 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-slate-800" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-4 w-28 bg-slate-800 rounded-md" />
+                    <div className="h-3 w-16 bg-slate-800/60 rounded-md" />
+                  </div>
+                </div>
+                <div className="space-y-2 pt-2">
+                  <div className="h-3.5 w-full bg-slate-800 rounded-md" />
+                  <div className="h-3.5 w-5/6 bg-slate-800 rounded-md" />
+                  <div className="h-3.5 w-2/3 bg-slate-800 rounded-md" />
+                </div>
+                <div className="flex gap-4 pt-4 border-t border-card-border/50">
+                  <div className="h-4 w-12 bg-slate-800 rounded-md" />
+                  <div className="h-4 w-12 bg-slate-800 rounded-md" />
+                </div>
+              </div>
+            ))
+          ) : filteredPosts.length > 0 ? (
             filteredPosts.map((post) => (
               <PostCard
                 key={post.id || post._id}
