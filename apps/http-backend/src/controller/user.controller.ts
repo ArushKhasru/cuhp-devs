@@ -527,7 +527,10 @@ export const getProfileByHandle = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: "Handle is required" });
         }
 
-        const user = await User.findOne({ handle }).select("-password");
+        const user = await User.findOne({ handle })
+            .select("-password")
+            .populate("followers", "fullName handle avatar bio")
+            .populate("following", "fullName handle avatar bio");
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
@@ -686,6 +689,11 @@ export const getProfileByHandle = async (req: AuthRequest, res: Response) => {
                         heatmapData,
                         totalXp,
                         badgesCount,
+                        followersCount: (user.followers || []).length,
+                        followingCount: (user.following || []).length,
+                        followers: user.followers || [],
+                        following: user.following || [],
+                        isFollowing: req.user?.id ? (user.followers || []).some((f: any) => (f._id || f).toString() === req.user?.id) : false,
                         submissionsToday: submissionsToday.map(s => ({
                             id: s._id,
                             title: (s.problemId as any)?.title || "Unknown",
@@ -780,6 +788,173 @@ export const getUserSubmissions = async (req: AuthRequest, res: Response) => {
 
     } catch (error) {
         console.error("Get user submissions error:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const followUser = async (req: AuthRequest, res: Response) => {
+    try {
+        const currentUserId = req.user?.id;
+        const { targetUserId } = req.params;
+
+        if (!currentUserId) {
+            return res.status(401).json({ message: "User not authenticated" });
+        }
+
+        if (currentUserId === targetUserId) {
+            return res.status(400).json({ message: "You cannot follow yourself" });
+        }
+
+        const currentUser = await User.findById(currentUserId);
+        const targetUser = await User.findById(targetUserId);
+
+        if (!currentUser || !targetUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Check if already following
+        const isFollowing = (currentUser.following || []).some(id => id.toString() === targetUserId);
+        if (isFollowing) {
+            return res.status(400).json({ message: "You are already following this user" });
+        }
+
+        // Initialize lists if undefined
+        if (!currentUser.following) currentUser.following = [];
+        if (!targetUser.followers) targetUser.followers = [];
+        if (!targetUser.notifications) targetUser.notifications = [];
+
+        // Add to following
+        currentUser.following.push(targetUser._id as any);
+        await currentUser.save();
+
+        // Add to target's followers
+        targetUser.followers.push(currentUser._id as any);
+
+        // Check if targetUser is already following currentUser (Mutual follow / Follow back)
+        const isTargetFollowingBack = (targetUser.following || []).some(id => id.toString() === currentUserId);
+        
+        let notificationType: "follow" | "follow_back" = "follow";
+        let notificationMessage = `${currentUser.fullName} started following you.`;
+
+        if (isTargetFollowingBack) {
+            notificationType = "follow_back";
+            notificationMessage = `${currentUser.fullName} followed you back!`;
+        }
+
+        // Push notification to targetUser
+        targetUser.notifications.push({
+            type: notificationType,
+            fromUser: currentUser._id as any,
+            message: notificationMessage,
+            read: false,
+            createdAt: new Date()
+        });
+
+        await targetUser.save();
+
+        return res.status(200).json({
+            message: notificationType === "follow_back" ? "Followed back successfully" : "Followed user successfully",
+            followingCount: currentUser.following.length,
+            followersCount: targetUser.followers.length,
+            isFollowing: true
+        });
+    } catch (error) {
+        console.error("Follow user error:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const unfollowUser = async (req: AuthRequest, res: Response) => {
+    try {
+        const currentUserId = req.user?.id;
+        const { targetUserId } = req.params;
+
+        if (!currentUserId) {
+            return res.status(401).json({ message: "User not authenticated" });
+        }
+
+        const currentUser = await User.findById(currentUserId);
+        const targetUser = await User.findById(targetUserId);
+
+        if (!currentUser || !targetUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Check if following
+        const isFollowing = (currentUser.following || []).some(id => id.toString() === targetUserId);
+        if (!isFollowing) {
+            return res.status(400).json({ message: "You are not following this user" });
+        }
+
+        // Remove from following
+        currentUser.following = (currentUser.following || []).filter(id => id.toString() !== targetUserId);
+        await currentUser.save();
+
+        // Remove from target's followers
+        targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId);
+        await targetUser.save();
+
+        return res.status(200).json({
+            message: "Unfollowed user successfully",
+            followingCount: currentUser.following.length,
+            followersCount: targetUser.followers.length,
+            isFollowing: false
+        });
+    } catch (error) {
+        console.error("Unfollow user error:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getNotifications = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ message: "User not authenticated" });
+        }
+
+        const user = await User.findById(userId)
+            .populate("notifications.fromUser", "fullName handle avatar")
+            .select("notifications");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Sort notifications by date descending
+        const sortedNotifications = (user.notifications || []).sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+        return res.status(200).json(sortedNotifications);
+    } catch (error) {
+        console.error("Get notifications error:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const markNotificationsRead = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ message: "User not authenticated" });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.notifications) {
+            user.notifications.forEach(n => {
+                n.read = true;
+            });
+            await user.save();
+        }
+
+        return res.status(200).json({ message: "All notifications marked as read" });
+    } catch (error) {
+        console.error("Mark notifications read error:", error);
         return res.status(500).json({ message: "Internal server error" });
     }
 };

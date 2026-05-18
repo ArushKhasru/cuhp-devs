@@ -17,6 +17,19 @@ export function ProfileOverviewClient({ user: initialUser, isOwnProfile }: Profi
         return apiFetch(`/user/suggest?q=${query}`);
     };
 
+    const handleFollowToggle = async () => {
+        if (!user?._id) return;
+        try {
+            const endpoint = user.isFollowing 
+                ? `/user/unfollow/${user._id}`
+                : `/user/follow/${user._id}`;
+            await apiFetch(endpoint, { method: "POST" });
+            await refreshUserData();
+        } catch (err) {
+            console.error("Failed to toggle follow status:", err);
+        }
+    };
+
     // Fetch fresh user data
     const refreshUserData = async () => {
         if (isRefreshing) return;
@@ -55,6 +68,7 @@ export function ProfileOverviewClient({ user: initialUser, isOwnProfile }: Profi
             user={user} 
             isOwnProfile={isOwnProfile} 
             onSearch={handleSearch} 
+            onFollowToggle={handleFollowToggle}
         />
     );
 }

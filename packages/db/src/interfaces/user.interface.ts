@@ -1,5 +1,14 @@
 import { Document, Types } from "mongoose";
 
+export interface INotification {
+  _id?: Types.ObjectId | string;
+  type: "follow" | "follow_back";
+  fromUser: Types.ObjectId | any;
+  message: string;
+  read: boolean;
+  createdAt: Date;
+}
+
 export interface IUser extends Document {
   fullName: string;
   email: string;
@@ -20,5 +29,7 @@ export interface IUser extends Document {
   streak: number;
   lastStreakUpdate: Date | null;
   solvedProblems: Types.ObjectId[];
+  followers: Types.ObjectId[];
+  following: Types.ObjectId[];
+  notifications: INotification[];
 }
-

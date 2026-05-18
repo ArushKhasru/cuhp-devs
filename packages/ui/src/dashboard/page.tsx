@@ -352,7 +352,33 @@ export default function Dashboard({ isCollapsed, onToggle, user: userOverride, a
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch dashboard data on mount and poll every 30 seconds
+    const [notifications, setNotifications] = useState<any[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+    const loadNotifications = async () => {
+        try {
+            const data = await apiFetch("/user/notifications");
+            if (Array.isArray(data)) {
+                setNotifications(data);
+                setUnreadCount(data.filter((n: any) => !n.read).length);
+            }
+        } catch (err) {
+            console.error("Failed to load notifications:", err);
+        }
+    };
+
+    const markAllRead = async () => {
+        try {
+            await apiFetch("/user/notifications/read", { method: "PUT" });
+            setUnreadCount(0);
+            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        } catch (err) {
+            console.error("Failed to mark notifications read:", err);
+        }
+    };
+
+    // Fetch dashboard data and notifications on mount and poll every 30 seconds
     useEffect(() => {
         const loadDashboardData = async () => {
             try {
@@ -360,6 +386,7 @@ export default function Dashboard({ isCollapsed, onToggle, user: userOverride, a
                 setError(null);
                 const data = await fetchDashboardData();
                 setDashboardData(data);
+                await loadNotifications();
             } catch (err) {
                 setError(err instanceof Error ? err.message : "Failed to load dashboard");
                 console.error("Dashboard data fetch error:", err);
@@ -375,6 +402,7 @@ export default function Dashboard({ isCollapsed, onToggle, user: userOverride, a
             try {
                 const data = await fetchDashboardData();
                 setDashboardData(data);
+                await loadNotifications();
             } catch (err) {
                 console.error("Dashboard refresh error:", err);
             }
@@ -441,9 +469,96 @@ export default function Dashboard({ isCollapsed, onToggle, user: userOverride, a
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button className="p-2 bg-background/50 rounded-xl border border-primary-custom/10 hover:border-primary-custom transition-colors">
-                                    <Bell className="text-slate-400" size={20} />
-                                </button>
+                                <div className="relative">
+                                    <button 
+                                        onClick={() => {
+                                            setIsNotificationsOpen(!isNotificationsOpen);
+                                            if (!isNotificationsOpen) {
+                                                markAllRead();
+                                            }
+                                        }}
+                                        className="p-2 bg-background/50 rounded-xl border border-primary-custom/10 hover:border-primary-custom transition-colors relative"
+                                    >
+                                        <Bell className={unreadCount > 0 ? "text-primary-custom animate-pulse" : "text-slate-400"} size={20} />
+                                        {unreadCount > 0 && (
+                                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary-custom text-white text-[10px] font-black rounded-full flex items-center justify-center animate-bounce">
+                                                {unreadCount}
+                                            </span>
+                                        )}
+                                    </button>
+                                    
+                                    <AnimatePresence>
+                                        {isNotificationsOpen && (
+                                            <>
+                                                {/* Popover backdrop overlay to close when clicking outside */}
+                                                <div 
+                                                    className="fixed inset-0 z-40" 
+                                                    onClick={() => setIsNotificationsOpen(false)} 
+                                                />
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                    transition={{ duration: 0.2 }}
+                                                    className="absolute right-0 mt-2 w-80 bg-card-custom border border-card-border rounded-2xl shadow-2xl z-50 overflow-hidden backdrop-blur-xl"
+                                                >
+                                                    <div className="p-4 border-b border-card-border flex items-center justify-between">
+                                                        <h4 className="font-bold text-sm text-foreground">Notifications</h4>
+                                                        {unreadCount > 0 && (
+                                                            <button 
+                                                                onClick={markAllRead}
+                                                                className="text-xs text-primary-custom font-semibold hover:underline"
+                                                            >
+                                                                Mark all read
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    <div className="max-h-64 overflow-y-auto divide-y divide-card-border/50 scrollbar-hide">
+                                                        {notifications.length === 0 ? (
+                                                            <div className="p-8 text-center text-xs text-slate-500 font-medium">
+                                                                No notifications yet
+                                                            </div>
+                                                        ) : (
+                                                            notifications.map((notif: any) => (
+                                                                <div 
+                                                                    key={notif._id}
+                                                                    onClick={() => {
+                                                                        if (notif.fromUser?.handle) {
+                                                                            window.location.href = `/${notif.fromUser.handle}`;
+                                                                        }
+                                                                    }}
+                                                                    className={`p-3 flex items-start gap-3 hover:bg-primary-custom/5 transition-colors cursor-pointer ${
+                                                                        !notif.read ? "bg-primary-custom/5" : ""
+                                                                    }`}
+                                                                >
+                                                                    <img 
+                                                                        src={notif.fromUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent((notif.fromUser?.fullName || 'user').trim().toLowerCase())}`}
+                                                                        alt="Sender avatar"
+                                                                        className="w-8 h-8 rounded-full border border-card-border"
+                                                                    />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-xs text-foreground/90 font-medium">
+                                                                            {notif.message}
+                                                                        </p>
+                                                                        <div className="flex items-center gap-2 mt-1">
+                                                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                                                                {notif.type === "follow_back" ? "Connection 🤝" : "New Follower ✨"}
+                                                                            </span>
+                                                                            <span className="text-[10px] text-slate-500">
+                                                                                {formatRelativeTime(notif.createdAt)}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
                                 <button className="bg-primary-custom hover:brightness-110 text-white px-5 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 shadow-lg shadow-primary-custom/20">
                                     <Rocket size={16} />
                                     Daily Challenge

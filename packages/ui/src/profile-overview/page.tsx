@@ -35,6 +35,7 @@ interface ActivityItem {
 
 interface ProfileOverviewProps {
     user: {
+        _id?: string;
         fullName: string;
         handle: string;
         avatar?: string;
@@ -50,9 +51,15 @@ interface ProfileOverviewProps {
         heatmapData: { date: string; count: number }[];
         submissionsToday: { id: string; title: string; difficulty: string; time: Date | string; status: string }[];
         recentActivity: ActivityItem[];
+        followersCount?: number;
+        followingCount?: number;
+        followers?: any[];
+        following?: any[];
+        isFollowing?: boolean;
     };
     isOwnProfile?: boolean;
     onSearch?: (query: string) => Promise<{ users: any[] }>;
+    onFollowToggle?: () => void;
 }
 
 const StatCard = ({ icon: Icon, label, value, subValue, color, isStreak, streakCount }: { 
@@ -196,11 +203,13 @@ const Heatmap = ({ data }: { data: { date: string; count: number }[] }) => {
     );
 };
 
-export default function ProfileOverview({ user, isOwnProfile, onSearch }: ProfileOverviewProps) {
+export default function ProfileOverview({ user, isOwnProfile, onSearch, onFollowToggle }: ProfileOverviewProps) {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [isPendingFollow, setIsPendingFollow] = useState(false);
+    const [connectionModalType, setConnectionModalType] = useState<"followers" | "following" | null>(null);
 
     // Filter out submissions that are already shown in "Submissions Today" to avoid duplicates
     const submissionTodayIds = new Set(user.submissionsToday.map(sub => sub.id));
@@ -274,7 +283,22 @@ export default function ProfileOverview({ user, isOwnProfile, onSearch }: Profil
                     <div>
                         <h1 className="text-3xl font-black tracking-tight text-foreground">{user.fullName}</h1>
                         <p className="text-primary-custom font-medium mt-1">@{user.handle}</p>
-                        {user.bio && <p className="text-muted-custom mt-2 max-w-md text-sm">{user.bio}</p>}
+                        <div className="flex items-center gap-4 text-xs font-semibold text-muted-custom mt-2">
+                            <span 
+                                onClick={() => setConnectionModalType("followers")}
+                                className="hover:text-primary-custom cursor-pointer transition-colors hover:underline"
+                            >
+                                <span className="text-foreground font-extrabold mr-1">{user.followersCount ?? 0}</span> followers
+                            </span>
+                            <span className="text-muted-custom/40">•</span>
+                            <span 
+                                onClick={() => setConnectionModalType("following")}
+                                className="hover:text-primary-custom cursor-pointer transition-colors hover:underline"
+                            >
+                                <span className="text-foreground font-extrabold mr-1">{user.followingCount ?? 0}</span> following
+                            </span>
+                        </div>
+                        {user.bio && <p className="text-muted-custom mt-3 max-w-md text-sm">{user.bio}</p>}
                         <div className="flex flex-wrap gap-3 mt-4">
                             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted-custom/5 border border-muted-custom/10 text-xs font-medium text-muted-custom">
                                 <GraduationCap className="w-3.5 h-3.5" />
@@ -290,8 +314,22 @@ export default function ProfileOverview({ user, isOwnProfile, onSearch }: Profil
                 
                 <div className="flex gap-2">
                     {!isOwnProfile && (
-                        <button className="px-6 py-2.5 rounded-xl bg-primary-custom text-white font-bold text-sm shadow-lg shadow-primary-custom/20 hover:opacity-90 transition-all active:scale-95">
-                            Follow
+                        <button
+                            disabled={isPendingFollow}
+                            onClick={async () => {
+                                if (onFollowToggle) {
+                                    setIsPendingFollow(true);
+                                    await onFollowToggle();
+                                    setIsPendingFollow(false);
+                                }
+                            }}
+                            className={`px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 duration-300 disabled:opacity-50 flex items-center gap-2 ${
+                                user.isFollowing
+                                    ? "bg-slate-800 border border-card-border hover:bg-slate-700/80 text-foreground"
+                                    : "bg-primary-custom text-white hover:brightness-110 shadow-primary-custom/20"
+                            }`}
+                        >
+                            {user.isFollowing ? "Unfollow" : "Follow"}
                         </button>
                     )}
                     <button 
@@ -302,6 +340,84 @@ export default function ProfileOverview({ user, isOwnProfile, onSearch }: Profil
                     </button>
                 </div>
             </div>
+
+            {/* Followers / Following Modal */}
+            <AnimatePresence>
+                {connectionModalType && (
+                    <>
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setConnectionModalType(null)}
+                            className="fixed inset-0 bg-background/80 backdrop-blur-md z-[100]"
+                        />
+                        
+                        {/* Centered Modal */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            transition={{ type: "spring", damping: 25, stiffness: 350 }}
+                            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-card-custom border border-card-border z-[101] shadow-2xl rounded-3xl p-6 flex flex-col max-h-[500px]"
+                        >
+                            <div className="flex items-center justify-between mb-6 pb-4 border-b border-card-border">
+                                <h3 className="text-xl font-black capitalize flex items-center gap-2">
+                                    <UserIcon className="w-5 h-5 text-primary-custom" />
+                                    {connectionModalType === "followers" ? "Followers" : "Following"}
+                                </h3>
+                                <button 
+                                    onClick={() => setConnectionModalType(null)}
+                                    className="p-2 rounded-xl hover:bg-muted-custom/10 transition-colors text-muted-custom hover:text-foreground"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto pr-2 space-y-3 scrollbar-hide">
+                                {(() => {
+                                    const list = connectionModalType === "followers" ? user.followers : user.following;
+                                    if (!list || list.length === 0) {
+                                        return (
+                                            <div className="h-48 flex flex-col items-center justify-center text-center opacity-40">
+                                                <UserIcon className="w-12 h-12 mb-3 text-primary-custom" />
+                                                <p className="text-sm font-semibold">No {connectionModalType} yet</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return list.map((item: any) => (
+                                        <button 
+                                            key={item._id}
+                                            onClick={() => {
+                                                setConnectionModalType(null);
+                                                window.location.href = `/${item.handle}`;
+                                            }}
+                                            className="w-full flex items-center justify-between p-3.5 rounded-2xl border border-card-border bg-muted-custom/5 hover:border-primary-custom/30 hover:bg-primary-custom/5 transition-all group animate-in fade-in slide-in-from-bottom-2 duration-300"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-11 h-11 rounded-xl overflow-hidden border border-card-border bg-background">
+                                                    <img 
+                                                        src={item.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent((item.fullName || 'user').trim().toLowerCase())}`} 
+                                                        alt={item.fullName} 
+                                                        className="w-full h-full object-cover" 
+                                                    />
+                                                </div>
+                                                <div className="text-left">
+                                                    <p className="font-extrabold text-foreground group-hover:text-primary-custom transition-colors text-sm">{item.fullName}</p>
+                                                    <p className="text-xs text-muted-custom">@{item.handle}</p>
+                                                </div>
+                                            </div>
+                                            <ArrowRight className="w-4 h-4 text-muted-custom group-hover:text-primary-custom group-hover:translate-x-1 transition-all" />
+                                        </button>
+                                    ));
+                                })()}
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
 
             {/* Search Sidebar Overlay */}
             <AnimatePresence>

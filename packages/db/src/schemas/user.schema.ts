@@ -1,24 +1,6 @@
 import { Schema } from "mongoose";
 import { IUser } from "../interfaces/user.interface";
 
-
-// import { UserRole } from "../enums";
-
-// export const UserSchema = new Schema(
-//   {
-//     email: { type: String, required: true, unique: true },
-//     name: String,
-//     token: String,
-//     password: { type: String, required: true },
-//     role: {
-//       type: String,
-//       enum: Object.values(UserRole),
-//       default: UserRole.USER,
-//     },
-//   },
-//   { timestamps: true }
-// );
-
 export const UserSchema = new Schema<IUser>(
   {
     fullName: {
@@ -114,6 +96,40 @@ export const UserSchema = new Schema<IUser>(
       type: Schema.Types.ObjectId,
       ref: "Problem",
       default: []
+    }],
+    followers: [{
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: []
+    }],
+    following: [{
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: []
+    }],
+    notifications: [{
+      type: {
+        type: String,
+        enum: ["follow", "follow_back"],
+        required: true
+      },
+      fromUser: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+      },
+      message: {
+        type: String,
+        required: true
+      },
+      read: {
+        type: Boolean,
+        default: false
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now
+      }
     }]
   },
   {
@@ -121,5 +137,7 @@ export const UserSchema = new Schema<IUser>(
   }
 );
 
-// Add index for faster lookups when checking if a problem is solved
+// Add indexes for faster lookups
 UserSchema.index({ solvedProblems: 1 });
+UserSchema.index({ followers: 1 });
+UserSchema.index({ following: 1 });
