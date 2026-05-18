@@ -17,6 +17,14 @@ const geistMono = localFont({
 
 
 
+export const metadata: Metadata = {
+  title: "CUHP Devs",
+  description: "Community platform for CUHP developers",
+  icons: {
+    icon: "/favicon.ico",
+  },
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,6 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="icon" href="/favicon.ico" />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap"
