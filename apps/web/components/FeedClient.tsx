@@ -7,6 +7,7 @@ import { apiFetch } from "../lib/api";
 import { useAuthStore } from "../store/useAuthStore";
 import { toast } from "../store/useToastStore";
 import { io, Socket } from "socket.io-client";
+import { prependPostIfMissing } from "../lib/feed-posts";
 
 interface FeedClientProps {
     initialData: {
@@ -58,12 +59,7 @@ export default function FeedClient({ initialData }: FeedClientProps) {
 
         socket.on("new-post", (newPost) => {
             console.log("Received new post via socket:", newPost);
-            setPosts((prevPosts) => {
-                // Avoid duplicates
-                const exists = prevPosts.some(p => (p.id || p._id) === (newPost.id || newPost._id));
-                if (exists) return prevPosts;
-                return [newPost, ...prevPosts];
-            });
+            setPosts((prevPosts) => prependPostIfMissing(prevPosts, newPost));
         });
 
         return () => {
@@ -113,7 +109,7 @@ export default function FeedClient({ initialData }: FeedClientProps) {
             });
 
             if (response.post) {
-                setPosts((prevPosts) => [response.post, ...prevPosts]);
+                setPosts((prevPosts) => prependPostIfMissing(prevPosts, response.post));
                 toast.success("Post shared successfully!");
             }
         } catch (error) {
