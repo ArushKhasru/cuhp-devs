@@ -1,10 +1,10 @@
+import { getProblemsRoot } from "../problem-path";
 import "dotenv/config";
 import fs from "fs/promises";
-import path from "path";
 import { connectDB } from "@repo/db";
 import { updateProblem } from "./updateProblem";
 
-const PROBLEMS_PATH = path.resolve("D:/Projects/cuhp-devs/apps/problems");
+const PROBLEMS_PATH = getProblemsRoot();
 
 async function getAllProblemSlugs() {
   const entries = await fs.readdir(PROBLEMS_PATH, {
@@ -31,4 +31,4 @@ async function run() {
   process.exit(0);
 }
 
-run().catch(console.error);
+run().catch(error => { console.error(error); process.exit(1); });

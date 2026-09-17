@@ -19,13 +19,13 @@ if (!cached) {
 export async function connectDB() {
   const MONGO_URI = process.env.DATABASE_URL;
   if (!MONGO_URI) {
-    throw new Error("MONGO_URI is not set");
+    throw new Error("DATABASE_URL is not set");
   }
 
   if (cached!.conn) return cached!.conn;
 
   if (!cached?.promise) {
-    cached!.promise = mongoose.connect(MONGO_URI);
+    cached!.promise = mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10000, maxPoolSize: 10 });
   }
 
   try {
@@ -37,4 +37,10 @@ export async function connectDB() {
     cached!.promise = null; // Reset promise so it can be retried
     throw error;
   }
+}
+export const isDatabaseReady = () => mongoose.connection.readyState === 1;
+export async function disconnectDB() {
+  await mongoose.disconnect();
+  cached!.conn = null;
+  cached!.promise = null;
 }

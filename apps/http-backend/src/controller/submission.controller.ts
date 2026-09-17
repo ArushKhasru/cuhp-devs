@@ -1,270 +1,55 @@
-import { Request, Response } from "express";
-import {
-  Problem,
-  Submission,
-  SubmissionResult,
-  TestCase,
-  Language,
-  User,
-} from "@repo/db";
-
-import { verifyToken } from "../utils";
+import { Response } from "express";
+import { Problem, Submission, SubmissionResult, TestCase, Language, User } from "@repo/db";
+import { AuthRequest } from "../middleware/auth.middleware";
 import { buildExecutableCode } from "../utils/buildExecutableCode";
+import { languageQuery } from "../utils/execution";
 
-export const createSubmission = async (req: Request, res: Response) => {
+export const createSubmission = async (req: AuthRequest, res: Response) => {
   try {
-    const token = req.cookies?.token;
-
-    if (!token) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    const { id: userId } = verifyToken(token);
-    const { problemSlug, code, language, status: reqStatus } = req.body;
-
-    if (!problemSlug || !code || !language) {
-      return res.status(400).json({ message: "Missing fields" });
-    }
-
+    const userId = req.user.id;
+    const { problemSlug, code, language } = req.body;
     const problem = await Problem.findOne({ slug: problemSlug });
-
-    if (!problem) {
-      return res.status(404).json({ message: "Problem not found" });
-    }
-
-    // Robust language lookup: check name and aliases (case-insensitive)
-    let lang = await Language.findOne({ 
-      $or: [
-        { name: { $regex: new RegExp(`^${language}$`, "i") } },
-        { aliases: { $regex: new RegExp(`^${language}$`, "i") } }
-      ]
-    });
-
-    // Fallback: substring match if exact match fails
-    if (!lang) {
-      lang = await Language.findOne({
-        $or: [
-          { name: { $regex: new RegExp(language, "i") } },
-          { aliases: { $regex: new RegExp(language, "i") } }
-        ]
-      });
-    }
-
-    if (!lang) {
-      console.error(`Invalid language requested: "${language}"`);
-      return res.status(400).json({ message: "Invalid language" });
-    }
-
-    // Load testcases
-    const testcases = await TestCase.find({
-      problemId: problem._id,
-    })
-      .sort({ order: 1 })
-      .lean();
-
-    if (!testcases.length) {
-      return res.status(400).json({ message: "No testcases found" });
-    }
-
-    // Build executable code
-    const finalCode = buildExecutableCode(problem.slug, lang.runtime, code);
-
-    // Initial status - if request says "Accepted"/"ACCEPTED" (already verified client-side/runner), we use it.
-    // Otherwise fallback to PENDING for official worker execution.
-    const initialStatus = reqStatus?.toUpperCase() === "ACCEPTED" ? SubmissionResult.ACCEPTED : SubmissionResult.PENDING;
-
-    // Create submission
+    if (!problem) return res.status(404).json({ message: "Problem not found" });
+    const lang = await Language.findOne(languageQuery(language));
+    if (!lang) return res.status(400).json({ message: "Invalid language" });
+    const testcases = await TestCase.find({ problemId: problem._id }).sort({ order: 1 }).lean();
+    if (!testcases.length) return res.status(400).json({ message: "No testcases found" });
+    // The client can never choose the verdict. Snapshot inputs and expected outputs together.
     const submission = await Submission.create({
-      userId,
-      problemId: problem._id,
-      code,
-      language,
-      status: initialStatus,
-
-      // store execution metadata for worker
-      runtime: lang.runtime,
-      version: lang.version,
-      executableCode: finalCode,
-
+      userId, problemId: problem._id, code, language,
+      status: SubmissionResult.PENDING,
+      runtime: lang.runtime, version: lang.version,
+      executableCode: buildExecutableCode(problem.slug, lang.runtime, code),
       totalTestcases: testcases.length,
-      expectedOutputs: testcases.map((tc) => tc.output),
+      testcaseInputs: testcases.map(tc => tc.input),
+      expectedOutputs: testcases.map(tc => tc.output),
     });
-
-    let newStreak = 0;
-    let alreadySolved = false;
-    let isNewSolve = false;
-
-    // STREAK LOGIC - Only increment for first-time unique problem solves
-    if (initialStatus === SubmissionResult.ACCEPTED) {
-      const user = await User.findById(userId);
-      console.log("=== STREAK UPDATE DEBUG ===");
-      console.log("User ID:", userId);
-      console.log("User found:", !!user);
-      
-      if (user) {
-        console.log("Current user streak:", user.streak);
-        console.log("Last streak update:", user.lastStreakUpdate);
-        console.log("Solved problems count:", user.solvedProblems.length);
-        
-        // Check if user has already solved this problem
-        const problemIdStr = problem._id.toString();
-        alreadySolved = user.solvedProblems.some(
-          (solvedId) => solvedId.toString() === problemIdStr
-        );
-        
-        console.log("Problem ID:", problemIdStr);
-        console.log("Already solved:", alreadySolved);
-
-        if (!alreadySolved) {
-          // This is a new solve! Add to solvedProblems array
-          user.solvedProblems.push(problem._id);
-          isNewSolve = true;
-          console.log("NEW SOLVE! Adding to solvedProblems");
-
-          // Only increment streak for first-time solves
-          const now = new Date();
-          const lastUpdate = user.lastStreakUpdate;
-          
-          console.log("Now:", now);
-          console.log("Last update:", lastUpdate);
-          
-          if (!lastUpdate) {
-            // First time ever
-            console.log("First time ever - setting streak to 1");
-            user.streak = 1;
-          } else {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            
-            const lastDate = new Date(lastUpdate);
-            lastDate.setHours(0, 0, 0, 0);
-            
-            const diffInDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
-            
-            console.log("Today (normalized):", today);
-            console.log("Last date (normalized):", lastDate);
-            console.log("Diff in days:", diffInDays);
-            
-            if (diffInDays === 1) {
-              // Consecutive day
-              console.log("Consecutive day - incrementing streak");
-              user.streak += 1;
-            } else if (diffInDays > 1) {
-              // Missed a day, restart from 1
-              console.log("Missed days - resetting streak to 1");
-              user.streak = 1;
-            } else {
-              console.log("Same day - no streak increment");
-            }
-            // if diffInDays === 0, it's the same day, don't increment
-          }
-          
-          user.lastStreakUpdate = now;
-          console.log("Updated streak to:", user.streak);
-          console.log("Updated lastStreakUpdate to:", user.lastStreakUpdate);
-        }
-        
-        console.log("Saving user...");
-        await user.save();
-        console.log("User saved successfully");
-        newStreak = user.streak;
-        console.log("Final newStreak value:", newStreak);
-      } else {
-        console.log("ERROR: User not found!");
-      }
-      console.log("=== END STREAK DEBUG ===");
-    }
-
-    return res.status(201).json({
-      message: "Submission created",
-      submissionId: submission._id,
-      streak: newStreak,
-      alreadySolved,
-      isNewSolve
-    });
-
-  } catch (err) {
-    console.error("Create submission error:", err);
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    return res.status(202).json({ submissionId: submission._id, status: submission.status });
+  } catch (error) {
+    console.error("Create submission failed", error);
+    return res.status(500).json({ message: "Could not queue submission" });
   }
 };
-
-
-export const getUserSubmissionsForProblem = async (
-  req: Request,
-  res: Response
-) => {
+export const getUserSubmissionsForProblem = async (req: AuthRequest, res: Response) => {
   try {
-    const token = req.cookies?.token;
-
-    if (!token) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    const { id: userId } = verifyToken(token);
-    const { slug } = req.params;
-
-    const problem = await Problem.findOne({ slug });
-
-    if (!problem) {
-      return res.status(404).json({ message: "Problem not found" });
-    }
-
-    const submissions = await Submission.find({
-      userId,
-      problemId: problem._id,
-    })
-      .select("status language createdAt")
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean();
-
-    return res.status(200).json(submissions);
-
-  } catch (err) {
-    console.error("Get user submissions error:", err);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    const problem = await Problem.findOne({ slug: req.params.slug });
+    if (!problem) return res.status(404).json({ message: "Problem not found" });
+    const submissions = await Submission.find({ userId: req.user.id, problemId: problem._id })
+      .select("status language createdAt").sort({ createdAt: -1 }).limit(10).lean();
+    return res.json(submissions);
+  } catch {
+    return res.status(500).json({ message: "Could not load submissions" });
   }
 };
-
-
-export const getSubmissionById = async (
-  req: Request,
-  res: Response
-) => {
+export const getSubmissionById = async (req: AuthRequest, res: Response) => {
+  if (!/^[a-f\d]{24}$/i.test(String(req.params.id))) return res.status(400).json({ message: "Invalid submission ID" });
   try {
-    const token = req.cookies?.token;
-
-    if (!token) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    const { id: userId } = verifyToken(token);
-    const { id } = req.params;
-
-    const submission = await Submission.findOne({
-      _id: id,
-      userId,
-    }).lean();
-
-    if (!submission) {
-      return res.status(404).json({
-        message: "Submission not found",
-      });
-    }
-
-    return res.status(200).json(submission);
-
-  } catch (err) {
-    console.error("Get submission error:", err);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    const submission = await Submission.findOne({ _id: req.params.id, userId: req.user.id })
+      .select("status language createdAt testcasesPassed totalTestcases failedTestcase").lean();
+    if (!submission) return res.status(404).json({ message: "Submission not found" });
+    const user = await User.findById(req.user.id).select("streak").lean();
+    return res.json({ ...submission, streak: user?.streak ?? 0 });
+  } catch {
+    return res.status(500).json({ message: "Could not load submission" });
   }
 };

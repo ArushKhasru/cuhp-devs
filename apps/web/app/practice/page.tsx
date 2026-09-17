@@ -57,9 +57,9 @@ export default async function PracticePage({
         currentStreak = profile?.streak || 0;
         if (profile?.lastStreakUpdate) {
             const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            today.setUTCHours(0, 0, 0, 0);
             const lastDate = new Date(profile.lastStreakUpdate);
-            lastDate.setHours(0, 0, 0, 0);
+            lastDate.setUTCHours(0, 0, 0, 0);
             const diffInDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
             if (diffInDays > 1) currentStreak = 0;
         }
@@ -69,9 +69,9 @@ export default async function PracticePage({
         
         // Check if user solved any problem today
         const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
+        startOfToday.setUTCHours(0, 0, 0, 0);
         const submissionsToday = await serverApiFetch(`/user/submissions?since=${startOfToday.getTime()}`).catch(() => []) as any[];
-        hasSolvedToday = submissionsToday.some(s => s.status === "Accepted");
+        hasSolvedToday = submissionsToday.some(s => s.status === "ACCEPTED");
 
         console.log(`[PracticePage] Fetched ${problems.length} problems`);
     } catch (error) {

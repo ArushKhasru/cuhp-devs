@@ -1,3 +1,4 @@
+import { getProblemDirectory } from "@repo/db/problem-path.js";
 import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
@@ -132,7 +133,7 @@ export const getProblemBySlug = async (req: Request, res: Response) => {
     // 🚀 if missing default code, generate it on the fly
     if (defaultCodes.length === 0) {
       try {
-        const structurePath = path.join(__dirname, "..", "..", "..", "problems", (slug as string), "Structure.md");
+        const structurePath = path.join(getProblemDirectory(problem.slug), "Structure.md");
         console.log(`[ProblemController] Checking structure at: ${structurePath}`);
 
         if (fs.existsSync(structurePath)) {

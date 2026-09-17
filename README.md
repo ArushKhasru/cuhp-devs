@@ -137,6 +137,8 @@ packages/
 - Prettier
 
 
+Deployment requirements, environment examples, and verification commands are documented in [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Known Gaps and Current Problems
 
 > [!WARNING]
@@ -147,8 +149,8 @@ This README should reflect the code honestly, so these limitations are worth cal
 - The current `README.md` previously lagged behind the actual product and still looked like a starter repo.
 - Some dashboard, community, and resources content is still mocked or partially hardcoded.
 - Practice category filtering is not fully backed by resolved tag metadata yet.
-- The visible practice `Submit` button is ahead of the fully polished end-to-end submission UX in the page layer.
-- Mongo change stream based post broadcasting works only when MongoDB is configured appropriately.
+- Practice submissions are judged asynchronously on the server; the page polls until a final verdict is available.
+- Submission transactions and live post broadcasts require MongoDB configured as a replica set (for example, Atlas).
 - A few UI sections are clearly scaffolded for future growth, especially side widgets and some resources/settings capabilities.
 
 ## Scripts

@@ -7,10 +7,15 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "generate-boilerplate": "pnpm --filter boilerplate-generator generate all",
+    "generate-boilerplate": "pnpm --filter @repo/boilerplate-generator generate all",
     "problem-update:db": "pnpm --filter @repo/db update:problem",
     "problems-sync:db": "pnpm --filter @repo/db db:sync",
-    "testcases-push:db": "pnpm --filter @repo/db push:testcases"
+    "testcases-push:db": "pnpm --filter @repo/db push:testcases",
+    "languages-sync:db": "pnpm --filter @repo/http-backend seed:languages",
+    "test:deployment": "pnpm -r --filter @repo/http-backend... --filter @repo/socket... run build && node --test tests/*.test.cjs",
+    "piston:up": "docker compose -f compose.piston.yaml up -d --wait --wait-timeout 600",
+    "piston:down": "docker compose -f compose.piston.yaml down",
+    "piston:logs": "docker compose -f compose.piston.yaml logs --tail=100 piston"
   },
   "devDependencies": {
     "@repo/db": "workspace:*",
@@ -21,6 +26,6 @@
   },
   "packageManager": "pnpm@10.30.1",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -b",
     "start": "node ./dist/index.js",
-    "dev": "pnpm --filter @repo/db run build && pnpm run build && pnpm run start"
+    "dev": "pnpm --filter @repo/db run build && pnpm run build && pnpm run start",
+    "seed:languages": "pnpm -r --filter @repo/http-backend... run build && node dist/seed-langs.js"
   },
   "dependencies": {
     "@repo/boilerplate-generator": "workspace:*",

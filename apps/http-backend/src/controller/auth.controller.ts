@@ -8,7 +8,7 @@ import { signinSchema, signupSchema } from "../validators/auth.schema"
 
 const isProduction = process.env.NODE_ENV === "production";
 const authCookieMaxAge = 4 * 24 * 60 * 60 * 1000;
-const authCookieSameSite = isProduction ? "none" : "lax";
+const authCookieSameSite = "lax" as const;
 const githubStateCookieName = "github_oauth_state";
 const googleStateCookieName = "google_oauth_state";
 const githubRedirectCookieName = "github_oauth_redirect";
@@ -87,7 +87,7 @@ const getFrontendUrl = () => {
 
 const getGithubCallbackUrl = () => {
   const callbackUrl =
-    process.env.GITHUB_CALLBACK_URL?.trim();
+    (process.env.GITHUB_CALLBACK_URL || getFrontendUrl() + "/api/auth/github/callback").trim();
 
   if (!callbackUrl) {
     throw new Error("GITHUB_CALLBACK_URL is not defined");
@@ -97,7 +97,7 @@ const getGithubCallbackUrl = () => {
 };
 
 const getGoogleCallbackUrl = () => {
-  const callbackUrl = process.env.GOOGLE_CALLBACK_URL?.trim();
+  const callbackUrl = (process.env.GOOGLE_CALLBACK_URL || getFrontendUrl() + "/api/auth/google/callback").trim();
 
   if (!callbackUrl) {
     throw new Error("GOOGLE_CALLBACK_URL is not defined");

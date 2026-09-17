@@ -1,54 +1,34 @@
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
 import { Post } from "@repo/db/models/post.model.js";
 
-export const registerPostEvents = (io: Server, socket: Socket) => {
-    // Only one change stream listener is needed per server instance, 
-    // but here we keep it simple or check if it's already listening.
-    // For a cleaner implementation, this might live in a separate service.
-};
-
-// Singleton change stream listener
-let changeStreamActive = false;
-
 export const initPostChangeStream = (io: Server) => {
-    if (changeStreamActive) return;
-
-    console.log("Initializing Post Change Stream...");
-
-    try {
-        // Watch the Post collection
-        const changeStream = Post.watch();
-
-        changeStream.on("change", async (change: any) => {
-            if (change.operationType === "insert") {
-                try {
-                    const postId = change.fullDocument._id;
-
-                    // Populate author fields just like in the API
-                    const populatedPost = await Post.findById(postId)
-                        .populate("author", "fullName email studentId");
-
-                    if (populatedPost) {
-                        console.log("Broadcasting new post:", postId);
-                        io.emit("new-post", populatedPost);
-                    }
-                } catch (error) {
-                    console.error("Error in Post change stream:", error);
-                }
-            }
-        });
-
-        changeStream.on("error", (error: any) => {
-            if (error.code === 40573 || error.codeName === "Location40573") {
-                console.warn("[Post Change Stream] Disabled: MongoDB is not running as a replica set. New post notifications will not be broadcasted automatically.");
-            } else {
-                console.error("Post change stream error:", error);
-            }
-            changeStreamActive = false;
-        });
-
-        changeStreamActive = true;
-    } catch (error) {
-        console.error("Post change stream disabled:", error);
-    }
+  let stopped = false;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let stream: ReturnType<typeof Post.watch> | undefined;
+  let resumeToken: any;
+  const start = () => {
+    if (stopped) return;
+    const current = Post.watch([], resumeToken ? { resumeAfter: resumeToken } : {});
+    stream = current;
+    current.on("change", async (change: any) => {
+      resumeToken = change._id;
+      if (change.operationType !== "insert") return;
+      try {
+        const post = await Post.findById(change.fullDocument._id).populate("author", "fullName email studentId");
+        if (post && !stopped) io.emit("new-post", post);
+      } catch (error) { console.error("Post broadcast failed", error); }
+    });
+    current.on("error", (error: any) => {
+      console.error("Post stream interrupted", error.message);
+      if (error.code === 286 || error.code === 260) resumeToken = undefined;
+      void current.close().catch(() => {});
+      if (!stopped) retry = setTimeout(start, 5000);
+    });
+  };
+  start();
+  return async () => {
+    stopped = true;
+    clearTimeout(retry);
+    await stream?.close();
+  };
 };

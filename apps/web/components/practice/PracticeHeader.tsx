@@ -15,9 +15,9 @@ export function PracticeHeader() {
             if (!isAuthenticated) return;
             try {
                 const startOfToday = new Date();
-                startOfToday.setHours(0, 0, 0, 0);
+                startOfToday.setUTCHours(0, 0, 0, 0);
                 const submissions = await apiFetch(`/user/submissions?since=${startOfToday.getTime()}`).catch(() => []);
-                setHasSolvedToday(submissions.some((s: any) => s.status === "Accepted"));
+                setHasSolvedToday(submissions.some((s: any) => s.status === "ACCEPTED"));
             } catch (err) {
                 console.error("Header check failed:", err);
             }

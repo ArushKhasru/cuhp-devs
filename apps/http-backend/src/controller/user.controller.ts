@@ -141,9 +141,9 @@ export const getDashboardData = async (req: AuthRequest, res: Response) => {
         let liveStreak = user.streak || 0;
         if (user.lastStreakUpdate) {
             const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            today.setUTCHours(0, 0, 0, 0);
             const lastDate = new Date(user.lastStreakUpdate);
-            lastDate.setHours(0, 0, 0, 0);
+            lastDate.setUTCHours(0, 0, 0, 0);
             
             const diffInDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
             // If missed more than 1 day, the streak is broken (0).
@@ -608,9 +608,9 @@ export const getProfileByHandle = async (req: AuthRequest, res: Response) => {
         let currentStreak = user.streak || 0;
         if (user.lastStreakUpdate) {
             const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            today.setUTCHours(0, 0, 0, 0);
             const lastDate = new Date(user.lastStreakUpdate);
-            lastDate.setHours(0, 0, 0, 0);
+            lastDate.setUTCHours(0, 0, 0, 0);
             const diffInDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
             if (diffInDays > 1) {
                 currentStreak = 0; // Broken streak
@@ -622,7 +622,7 @@ export const getProfileByHandle = async (req: AuthRequest, res: Response) => {
 
         // 6. Submissions Today
         const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
+        startOfToday.setUTCHours(0, 0, 0, 0);
         const submissionsToday = await Submission.find({ 
             userId, 
             createdAt: { $gte: startOfToday } 

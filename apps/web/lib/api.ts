@@ -1,10 +1,4 @@
-export const API_URL = (
-    process.env.NEXT_PUBLIC_HTTP_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:3001"
-)
-    .trim()
-    .replace(/\/+$/, "");
+export const API_URL = "/api";
 
 type ApiErrorPayload = {
     message?: string;
@@ -80,11 +74,10 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
         // Auto-logout on session expiration or missing token
         if (response.status === 401) {
             if (typeof window !== "undefined") {
-                // Clear persistent auth state to prevent redirect loops
-              
-                
+                localStorage.removeItem("auth-storage");
+
                 // Only redirect if not already on sign-in page
-                window.location.href = "/signin";
+                if (!window.location.pathname.startsWith("/signin")) window.location.href = "/signin";
                 
             }
         }

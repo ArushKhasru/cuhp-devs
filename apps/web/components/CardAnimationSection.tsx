@@ -23,6 +23,7 @@ const developers = [
 type CardAnimationSectionProps = {
     heroLoaded: boolean;
     cardsSectionRef: RefObject<HTMLElement | null>;
+    pinContainerRef: RefObject<HTMLDivElement | null>;
     spreadProgress: number;
     moveUpProgress: number;
     moveDownProgress: number;
@@ -32,6 +33,7 @@ type CardAnimationSectionProps = {
 export default function CardAnimationSection({
     heroLoaded,
     cardsSectionRef,
+    pinContainerRef,
     spreadProgress,
     moveUpProgress,
     moveDownProgress,
@@ -41,12 +43,14 @@ export default function CardAnimationSection({
         <section
             id="devs"
             ref={cardsSectionRef}
-            className={`relative w-[100%] min-h-[170vh] transition-all duration-1000 delay-700 ease-out ${
-                heroLoaded ? "opacity-100" : "opacity-0"
-            }`}
+            className={`relative w-[100%] min-h-[320vh] transition-all duration-1000 delay-700 ease-out ${heroLoaded ? "opacity-100" : "opacity-0"
+                }`}
         >
             {/* ── Sticky viewport wrapper ── */}
-            <div className="sticky top-0 h-screen w-full flex items-center justify-center px-6 md:px-8 py-14">
+            <div
+                ref={pinContainerRef}
+                className="sticky top-0 z-20 h-screen w-full flex items-center justify-center px-6 md:px-8 py-14 will-change-transform"
+            >
 
                 {/* ── Glassmorphic card panel ── */}
                 <div
@@ -105,8 +109,8 @@ export default function CardAnimationSection({
 
                                 /* ── vertical travel ── */
                                 const fanLiftY = -20 * Math.abs(offset) * spreadProgress;
-                                const moveUpY   = -110 * moveUpProgress;
-                                const moveDownY =  300 * moveDownProgress;
+                                const moveUpY = -110 * moveUpProgress;
+                                const moveDownY = 300 * moveDownProgress;
                                 const translateY = moveUpY + moveDownY + fanLiftY;
 
                                 /* ── 3-D flip ── */

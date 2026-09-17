@@ -5,11 +5,7 @@ import { io, Socket } from "socket.io-client";
 import { useAuthStore } from "../store/useAuthStore";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4001";
-const HTTP_URL = (
-    process.env.NEXT_PUBLIC_HTTP_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:3001"
-).trim().replace(/\/+$/, "");
+const HTTP_URL = "/api";
 
 const getPersistedAuthToken = (): string | null => {
     if (typeof window === "undefined") return null;
@@ -32,6 +28,7 @@ export const useSocket = (token: string | null): {
     sendMessage: (roomName: string, content: string) => void;
 } => {
     const socketRef = useRef<Socket | null>(null);
+    const joinedRooms = useRef(new Set<string>());
     const hasLoggedConnectErrorRef = useRef(false);
     const [isConnected, setIsConnected] = useState(false);
     const [resolvedToken, setResolvedToken] = useState<string | null>(token || null);
@@ -50,6 +47,7 @@ export const useSocket = (token: string | null): {
             return;
         }
 
+        setResolvedToken(null);
         let isMounted = true;
         setIsResolvingToken(true);
 
@@ -94,14 +92,16 @@ export const useSocket = (token: string | null): {
             auth: { token: resolvedToken },
             transports: ["polling", "websocket"],
             timeout: 10000,
-            reconnectionAttempts: 5,
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
+            reconnectionDelayMax: 10000,
         });
 
         socketRef.current = socket;
 
         socket.on("connect", () => {
             setIsConnected(true);
+            joinedRooms.current.forEach(roomName => socket.emit("join-room", { roomName }));
             hasLoggedConnectErrorRef.current = false;
             console.log("Socket connected:", socket.id);
         });
@@ -121,10 +121,12 @@ export const useSocket = (token: string | null): {
         return () => {
             socket.disconnect();
             socketRef.current = null;
+            setIsConnected(false);
         };
     }, [resolvedToken, isResolvingToken]);
 
     const joinRoom = useCallback((roomName: string) => {
+        joinedRooms.current.add(roomName);
         if (socketRef.current) {
             console.log(`[useSocket] Joining room: ${roomName}`);
             socketRef.current.emit("join-room", { roomName });
@@ -132,6 +134,7 @@ export const useSocket = (token: string | null): {
     }, []);
 
     const leaveRoom = useCallback((roomName: string) => {
+        joinedRooms.current.delete(roomName);
         if (socketRef.current) {
             console.log(`[useSocket] Leaving room: ${roomName}`);
             socketRef.current.emit("leave-room", { roomName });

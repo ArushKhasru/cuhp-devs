@@ -17,6 +17,7 @@ export default function HomeClient() {
     const [hideNavbar, setHideNavbar] = useState(false);
 
     const cardsSectionRef = useRef<HTMLElement | null>(null);
+    const pinContainerRef = useRef<HTMLDivElement | null>(null);
     const lastScrollYRef = useRef(0);
     const progressRef = useRef(0);
     const smoothProgressRef = useRef(0);
@@ -44,7 +45,7 @@ export default function HomeClient() {
         const onWheel = (e: WheelEvent) => {
             e.preventDefault();
             targetScrollRef.current = clamp(
-                targetScrollRef.current + e.deltaY,
+                targetScrollRef.current + e.deltaY * 1.5,
                 0,
                 wrapper.scrollHeight - window.innerHeight
             );
@@ -64,7 +65,7 @@ export default function HomeClient() {
             const delta = touchStartY - touch.clientY;
             touchStartY = touch.clientY;
             targetScrollRef.current = clamp(
-                targetScrollRef.current + delta,
+                targetScrollRef.current + delta * 2.0,
                 0,
                 wrapper.scrollHeight - window.innerHeight
             );
@@ -72,7 +73,7 @@ export default function HomeClient() {
 
         const smoothLoop = () => {
             // Lerp factor: lower = slower/smoother (0.06 = very smooth)
-            currentScrollRef.current = lerp(currentScrollRef.current, targetScrollRef.current, 0.02);
+            currentScrollRef.current = lerp(currentScrollRef.current, targetScrollRef.current, 0.08);
 
             if (Math.abs(currentScrollRef.current - targetScrollRef.current) < 0.1) {
                 currentScrollRef.current = targetScrollRef.current;
@@ -95,14 +96,27 @@ export default function HomeClient() {
             }
             lastScrollYRef.current = scrolled;
 
-            // --- Cards progress logic ---
+            // --- Cards progress & Pinning logic ---
             const section = cardsSectionRef.current;
             if (section) {
-                const sectionTop = section.offsetTop - scrolled;
+                const offsetTop = section.offsetTop;
+                const sectionHeight = section.offsetHeight;
                 const viewportHeight = window.innerHeight || 1;
-                const start = viewportHeight * 0.15;
-                const end = -viewportHeight * 0.85;
-                const rawProgress = clamp((start - sectionTop) / (start - end), 0, 1);
+                const pinDuration = Math.max(0, sectionHeight - viewportHeight);
+
+                let rawProgress = 0;
+                let translation = 0;
+
+                if (scrolled < offsetTop) {
+                    rawProgress = 0;
+                    translation = 0;
+                } else if (scrolled >= offsetTop && scrolled <= offsetTop + pinDuration) {
+                    translation = scrolled - offsetTop;
+                    rawProgress = pinDuration > 0 ? (scrolled - offsetTop) / pinDuration : 1;
+                } else {
+                    translation = pinDuration;
+                    rawProgress = 1;
+                }
 
                 // Lerp progress too for extra silkiness
                 smoothProgressRef.current = lerp(smoothProgressRef.current, rawProgress, 0.08);
@@ -110,6 +124,11 @@ export default function HomeClient() {
                 if (Math.abs(smoothProgressRef.current - progressRef.current) > 0.001) {
                     progressRef.current = smoothProgressRef.current;
                     setCardsProgress(smoothProgressRef.current);
+                }
+
+                // Update pinned container transform imperatively to avoid React state update latency (zero jitter)
+                if (pinContainerRef.current) {
+                    pinContainerRef.current.style.transform = `translateY(${translation}px)`;
                 }
             }
 
@@ -132,15 +151,15 @@ export default function HomeClient() {
         };
     }, []);
 
-    // Phase 1 (0 -> ~0.13): cards rise without flipping.
-    // Phase 2 (~0.13 -> ~0.23): cards move down only.
-    // Phase 3 (~0.23+): cards flip.
-    const LIFT_END = 0.1;
-    const DROP_ONLY_WINDOW = 0.1;
+    // Phase 1 (0 -> ~0.15): cards rise without flipping.
+    // Phase 2 (~0.15 -> ~0.30): cards move down only.
+    // Phase 3 (~0.30+): cards flip.
+    const LIFT_END = 0.15;
+    const DROP_ONLY_WINDOW = 0.15;
     const FLIP_START = LIFT_END + DROP_ONLY_WINDOW;
-    const SPREAD_WINDOW = 0.15;
+    const SPREAD_WINDOW = 0.23;
     const DROP_WINDOW = DROP_ONLY_WINDOW;
-    const FLIP_WINDOW = 0.35;
+    const FLIP_WINDOW = 0.54;
 
     const spreadProgress = clamp(cardsProgress / SPREAD_WINDOW, 0, 0.8)
     const moveUpProgress = clamp(cardsProgress / LIFT_END, 0, 1);
@@ -149,11 +168,10 @@ export default function HomeClient() {
     return (
         <>
             <Navbar
-                className={`transition-transform duration-500 ease-out transition-opacity ${
-                    heroLoaded && !hideNavbar
+                className={`transition-transform duration-500 ease-out transition-opacity ${heroLoaded && !hideNavbar
                         ? "translate-y-0 opacity-100"
                         : "-translate-y-full opacity-0 pointer-events-none"
-                }`}
+                    }`}
             />
 
             {/* Fixed wrapper — smooth scroll moves this */}
@@ -203,13 +221,16 @@ export default function HomeClient() {
                 <CardAnimationSection
                     heroLoaded={heroLoaded}
                     cardsSectionRef={cardsSectionRef}
+                    pinContainerRef={pinContainerRef}
                     spreadProgress={spreadProgress}
                     moveUpProgress={moveUpProgress}
                     moveDownProgress={moveDownProgress}
                     flipProgress={flipProgress}
                 />
-
-                <Footer />
+                <div className="h-[20vh] md:h-[30vh]" />
+                <section>
+                    <Footer />
+                </section>
             </div>
         </>
     );

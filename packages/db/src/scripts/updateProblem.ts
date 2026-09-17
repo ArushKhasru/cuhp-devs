@@ -1,9 +1,9 @@
+import { getProblemDirectory } from "../problem-path";
 import path from "path";
 import fs from "fs/promises";
 import { Problem, DefaultCode, Language } from "@repo/db";
 import { LANGUAGE_MAPPING } from "@repo/common";
 
-const PROBLEMS_PATH = path.resolve("D:/Projects/cuhp-devs/apps/problems");
 
 async function readFileSafe(filePath: string) {
   try {
@@ -14,7 +14,7 @@ async function readFileSafe(filePath: string) {
 }
 
 export async function updateProblem(slug: string) {
-  const problemDir = path.join(PROBLEMS_PATH, slug);
+  const problemDir = getProblemDirectory(slug);
 
   const problemMd = await readFileSafe(
     path.join(problemDir, "Problem.md")

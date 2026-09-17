@@ -1,3 +1,4 @@
+import { getProblemsRoot } from "../problem-path";
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
@@ -6,7 +7,7 @@ import mongoose from "mongoose";
 import { Problem, TestCase } from "../models";
 import { connectDB } from "../connection";
 
-const PROBLEMS_DIR = path.resolve("D:/Projects/cuhp-devs/apps/problems");
+const PROBLEMS_DIR = getProblemsRoot();
 console.log(`[SeedTestcases] Using PROBLEMS_DIR: ${PROBLEMS_DIR}`);
 
 async function seed() {
@@ -77,4 +78,4 @@ async function seed() {
   await mongoose.disconnect();
 }
 
-seed();
+seed().catch(error => { console.error(error); process.exit(1); });

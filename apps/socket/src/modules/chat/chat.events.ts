@@ -53,7 +53,7 @@ export const registerChatEvents = (
         email,
         avatar,
       };
-      roomManager.addUser(roomId, userId, userData);
+      roomManager.addUser(roomId, userId, userData, socket.id);
       const activity = roomManager.logActivity(userData.fullName || "User", "joined", room.name);
       
       // PERSIST to DB for global visibility
@@ -93,7 +93,7 @@ export const registerChatEvents = (
       const roomId = room._id.toString();
       socket.leave(roomId);
 
-      roomManager.removeUser(roomId, userId);
+      roomManager.removeUser(roomId, userId, socket.id);
       const activity = roomManager.logActivity(socket.data.user.fullName || "User", "left", room.name);
       
       // PERSIST to DB for global visibility
@@ -121,7 +121,7 @@ export const registerChatEvents = (
     if (!userIdToCleanup) return;
 
     try {
-      const roomsAffected = roomManager.removeUserFromAllRooms(userIdToCleanup);
+      const roomsAffected = roomManager.removeUserFromAllRooms(userIdToCleanup, socket.id);
 
       roomsAffected.forEach(roomId => {
         io.to(roomId).emit("room-members-online", {

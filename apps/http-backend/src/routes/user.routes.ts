@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { User } from "@repo/db";
 import { 
     updateProfile, 
     getProfile, 
@@ -23,7 +24,17 @@ const router: Router = Router();
 router.put("/profile", protect, updateProfile);
 router.get("/profile", protect, getProfile);
 router.get("/suggest", searchUsers);
-router.get("/profile/handle/:handle", protect, getProfileByHandle);
+// Resolve missing handles before authentication so unknown page URLs are 404s.
+router.get("/profile/handle/:handle", async (req, res, next) => {
+    try {
+        if (!await User.exists({ handle: req.params.handle })) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        next();
+    } catch (error) {
+        next(error);
+    }
+}, protect, getProfileByHandle);
 router.get("/dashboard", protect, getDashboardData);
 router.get("/submissions", protect, getUserSubmissions);
 router.get("/community/feed", protect, getCommunityFeed);

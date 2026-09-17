@@ -26,6 +26,7 @@ export default function FeedClient({ initialData }: FeedClientProps) {
     const hasLoggedConnectErrorRef = useRef(false);
 
     useEffect(() => {
+        if (!token) return;
         // Connect to socket server
         const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4001";
         console.log(`[FeedClient] Connecting to socket at ${socketUrl}`);
@@ -36,8 +37,9 @@ export default function FeedClient({ initialData }: FeedClientProps) {
             },
             transports: ["websocket"],
             timeout: 10000,
-            reconnectionAttempts: 3,
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
+            reconnectionDelayMax: 10000,
         });
 
         socketRef.current = socket;

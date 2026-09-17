@@ -618,7 +618,7 @@ export default function ProfileOverview({ user, isOwnProfile, onSearch, onFollow
                                             </div>
                                         </div>
                                         <div className={`text-xs font-bold px-3 py-1 rounded-full ${
-                                            sub.status === 'Accepted' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                                            sub.status === 'ACCEPTED' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
                                         }`}>
                                             {sub.status}
                                         </div>

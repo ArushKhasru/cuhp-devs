@@ -1,5 +1,13 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  turbopack: { root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..") },
+  async rewrites() {
+    const backend = (process.env.HTTP_BACKEND_URL || "http://localhost:3001").replace(/\/+$/, "");
+    return [{ source: "/api/:path*", destination: backend + "/:path*" }];
+  },
   transpilePackages: ["@repo/ui"],
   images: {
     dangerouslyAllowSVG: true,

@@ -7,7 +7,7 @@ piston
 .pnp.js
 
 # Local env files
-.env.example
+!**/.env.example
 .env
 .env.local
 .env.development.local
@@ -41,6 +41,6 @@ yarn-error.log*
 piston
 mongo-fix
 Report
-
+deployment.md
 judge0/
 packages/**/tsconfig.tsbuildinfo

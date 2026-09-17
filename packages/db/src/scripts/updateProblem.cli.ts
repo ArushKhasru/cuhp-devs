@@ -19,4 +19,4 @@ async function run() {
   process.exit(0);
 }
 
-run().catch(console.error);
+run().catch(error => { console.error(error); process.exit(1); });

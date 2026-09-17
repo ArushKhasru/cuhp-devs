@@ -58,6 +58,8 @@ export const ProblemInterface: React.FC<ProblemInterfaceProps> = ({ problem, use
   const [currentStreak, setCurrentStreak] = useState(user?.streak || 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAlreadySolved, setIsAlreadySolved] = useState(false);
+  const submissionAbort = useRef<AbortController | null>(null);
+  const [hasSolved, setHasSolved] = useState(Boolean(problem.isSolved));
   const streakUpdatedRef = useRef(false); // Track if streak was updated via submission
 
   // Resizing logic
@@ -147,6 +149,12 @@ export const ProblemInterface: React.FC<ProblemInterfaceProps> = ({ problem, use
     setResetKey((prev) => prev + 1);
   }, [problem.id, problem.defaultCode]);
 
+  useEffect(() => {
+    setHasSolved(Boolean(problem.isSolved));
+    setIsSubmitting(false);
+    return () => { submissionAbort.current?.abort(); };
+  }, [problem.id, problem.isSolved]);
+
   const handleLanguageChange = (newLang: string) => {
     setLanguage(newLang);
     setCode(problem.defaultCode[newLang] ?? FALLBACK_CODE);
@@ -189,58 +197,50 @@ export const ProblemInterface: React.FC<ProblemInterfaceProps> = ({ problem, use
   };
 
   const handleSubmit = async () => {
+    submissionAbort.current?.abort();
+    const controller = new AbortController();
+    submissionAbort.current = controller;
+    const labels: Record<string, string> = {
+      ACCEPTED: "Accepted", WRONG_ANSWER: "Wrong Answer", TIME_LIMIT_EXCEEDED: "Time Limit Exceeded",
+      COMPILATION_ERROR: "Compilation Error", RUNTIME_ERROR: "Runtime Error", INTERNAL_ERROR: "Execution Error",
+    };
     try {
       setIsSubmitting(true);
-      const results = await runCode();
-
-      if (!results || results.length === 0) {
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Check if all test cases passed
-      const allPassed = results.every((res: any) => res.status === 'Accepted');
-
-      if (allPassed) {
-        // Call submission API to persist
-        const data = await apiFetch("/submissions", {
-          method: "POST",
-          body: JSON.stringify({
-            problemSlug: problem.slug,
-            language,
-            code,
-            status: "ACCEPTED"
-          }),
-        });
-
-        // Check if this is a new solve or already solved
-        if (data.alreadySolved) {
-          // Show "already solved" state
-          setIsAlreadySolved(true);
-          setIsCelebrating(true);
-        } else if (data.isNewSolve) {
-          // This is a new solve! Show celebration
-          setIsAlreadySolved(false);
-          setIsCelebrating(true);
-          
-          console.log("Submission response:", data); // Debug log
-          if (typeof data.streak === 'number') {
-            streakUpdatedRef.current = true; // Mark that we've updated streak via submission
-            setCurrentStreak(data.streak);
-            onSuccess?.(data.streak);
-            console.log("Updated streak to:", data.streak); // Debug log
-          }
+      setOutput([{ testcase: 0, status: "Running", stdout: "Queued for judging..." }]);
+      const queued = await apiFetch("/submissions", {
+        method: "POST", signal: controller.signal,
+        body: JSON.stringify({ problemSlug: problem.slug, language, code }),
+      });
+      while (!controller.signal.aborted) {
+        const result = await apiFetch("/submissions/" + queued.submissionId, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (["PENDING", "PROCESSING"].includes(result.status)) {
+          setOutput([{ testcase: 0, status: "Running", stdout: result.status === "PENDING" ? "Queued for judging..." : "Judging all test cases..." }]);
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          continue;
         }
-
-        // Hide modal after 7 seconds (slightly longer for already-solved message)
-        setTimeout(() => setIsCelebrating(false), 7000);
+        setOutput([{
+          testcase: result.failedTestcase || 0,
+          status: labels[result.status] || "Execution Error",
+          stdout: result.testcasesPassed + "/" + result.totalTestcases + " test cases passed",
+        }]);
+        if (result.status === "ACCEPTED") {
+          setIsAlreadySolved(hasSolved);
+          setHasSolved(true);
+          setIsCelebrating(true);
+          streakUpdatedRef.current = true;
+          setCurrentStreak(result.streak);
+          onSuccess?.(result.streak);
+          setTimeout(() => setIsCelebrating(false), 7000);
+        }
+        break;
       }
-    } catch (err: any) {
-      console.error("Submission error:", err);
-      const message = err.message || "Failed to submit. Please try again.";
-      setOutput([{ testcase: 0, status: 'Error', stderr: `Submission Error: ${message}` }]);
+    } catch (error: any) {
+      if (!controller.signal.aborted) {
+        setOutput([{ testcase: 0, status: "Error", stderr: error.message || "Could not check the submission. It may still be queued; check your submission history." }]);
+      }
     } finally {
-      setIsSubmitting(false);
+      if (!controller.signal.aborted) setIsSubmitting(false);
     }
   };
 
@@ -368,7 +368,7 @@ export const ProblemInterface: React.FC<ProblemInterfaceProps> = ({ problem, use
             <span className="text-slate-700 text-lg">/</span>
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-foreground">{problem.title}</span>
-              {problem.isSolved && (
+              {hasSolved && (
                 <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
                   <CheckCircle2 className="text-emerald-500" size={14} />
                   <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Solved</span>
@@ -478,7 +478,7 @@ export const ProblemInterface: React.FC<ProblemInterfaceProps> = ({ problem, use
               </button>
               <button
                 onClick={runCode}
-                disabled={isRunning}
+                disabled={isRunning || isSubmitting}
                 className="px-5 py-2 bg-background/60 hover:bg-background/80 text-foreground border border-primary-custom/10 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 disabled:opacity-50"
               >
                 <Play size={14} className="text-muted-custom" />

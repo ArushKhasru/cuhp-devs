@@ -1,71 +1,41 @@
-import express, { Request, Response, Application } from "express";
 import "dotenv/config";
-import { connectDB } from "@repo/db";
-import cookieParser from "cookie-parser";
-import authRoutes from "./routes/auth.routes";
-import cors from "cors";
-import problemRoutes from "./routes/problem.routes";
-import submissionRoutes from "./routes/submission.routes";
-import languageRoutes from "./routes/language.routes";
-import runCodeRoutes from "./routes/runCode.routes";
-import userRoutes from "./routes/user.routes";
-import postRoutes from "./routes/post.routes";
+import { connectDB, disconnectDB, Submission, User } from "@repo/db";
+import { createApp } from "./app";
+import { startResultWorker } from "./workers/result.worker";
 
-
-const app: Application = express();
-const isProduction = process.env.NODE_ENV === "production";
-const allowedOrigins = (
-  process.env.BACKEND_CORS_ORIGINS ?? "http://localhost:3000"
-)
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true,
-  }),
-);
-
-app.use(express.json());
-app.use(cookieParser());
-app.use("/auth", authRoutes);
-app.use("/user", userRoutes);
-app.use("/problems", problemRoutes);
-app.use("/submissions", submissionRoutes);
-app.use("/languages", languageRoutes);
-app.use("/runCode", runCodeRoutes);
-app.use("/posts", postRoutes);
-
-
-
-app.get("/", (req: Request, res: Response) => {
-  res.send("Hello World!");
-});
-
-
-const port = Number(process.env.PORT || 3001);
-
-app.listen(port, () => {
-  console.log(`http://localhost:${port}`);
-});
-
-const start = async () => {
-  try {
-    await connectDB();
-    // Worker depends on Mongo availability; start it only after DB is ready.
-    require("./workers/result.worker");
-  } catch (error) {
-    if (isProduction) {
-      console.error("Failed to start server", error);
-      process.exit(1);
-    }
-
+export async function startServer() {
+  if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET is required");
+  const connection = await connectDB();
+  const hello = await connection.connection.db!.admin().command({ hello: 1 });
+  if (!hello.setName && hello.msg !== "isdbgrid") {
+    throw new Error("Submission judging requires a MongoDB replica set. Use Atlas or a local replica set.");
   }
-
-};
-
-start();
-export default app;
+  await Promise.all([Submission.init(), User.init()]);
+  const app = createApp();
+  const server = app.listen(Number(process.env.PORT || 3001), "0.0.0.0", () => {
+    console.log("HTTP API ready");
+  });
+  const worker = startResultWorker();
+  let closing = false;
+  const shutdown = async () => {
+    if (closing) return;
+    closing = true;
+    const deadline = setTimeout(() => process.exit(1), 25_000);
+    deadline.unref();
+    const closed = new Promise<void>(resolve => server.close(() => resolve()));
+    await worker.stop();
+    await closed;
+    await disconnectDB();
+    clearTimeout(deadline);
+  };
+  process.once("SIGTERM", () => { void shutdown(); });
+  process.once("SIGINT", () => { void shutdown(); });
+  return server;
+}
+if (require.main === module) {
+  startServer().catch(async error => {
+    console.error("API startup failed", error);
+    await disconnectDB();
+    process.exitCode = 1;
+  });
+}

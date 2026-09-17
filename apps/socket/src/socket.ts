@@ -7,11 +7,12 @@ export const setupSocket = (io: Server) => {
   io.use(authenticateSocket);
 
   // Initialize change streams
-  initPostChangeStream(io);
+  const stopStreams = initPostChangeStream(io);
 
   io.on("connection", (socket) => {
-    console.log("Connected:", socket.data.user.email);
+
 
     registerChatEvents(io, socket);
   });
+  return stopStreams;
 };

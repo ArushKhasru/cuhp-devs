@@ -279,7 +279,7 @@ function generateRustFullFullBoilerplate(parsed: any) {
 }
 
 export function generateForSlug(slug: string) {
-  const basePath = path.join(process.cwd(), "..", "problems", slug);
+  const basePath = path.join(getProblemsRoot(), slug);
   const structurePath = path.join(basePath, "Structure.md");
 
   if (!fs.existsSync(structurePath)) {
@@ -313,7 +313,7 @@ export function generateForSlug(slug: string) {
 
 if (require.main === module) {
   const arg = process.argv[2];
-  const problemsRoot = path.join(process.cwd(), "..", "problems");
+  const problemsRoot = getProblemsRoot();
 
   if (!arg) {
     console.log("Provide problem slug or 'all'");
@@ -333,4 +333,8 @@ if (require.main === module) {
   } else {
     generateForSlug(arg);
   }
+}
+
+function getProblemsRoot() {
+  return process.env.PROBLEMS_DIR ? path.resolve(process.env.PROBLEMS_DIR) : path.resolve(__dirname, "../../../apps/problems");
 }

@@ -11,12 +11,14 @@
     "build": "tsc -b",
     "update:problem": "ts-node src/scripts/updateProblem.cli.ts",
     "db:sync": "ts-node src/scripts/syncProblems.ts",
-    "push:testcases": "ts-node src/scripts/seedTestcases.ts"
+    "push:testcases": "ts-node src/scripts/seedTestcases.ts",
+    "seed:languages": "ts-node src/scripts/seedLanguages.ts"
   },
   "dependencies": {
     "@repo/common": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "mongoose": "^8.23.0"
+    "mongoose": "^8.23.0",
+    "dotenv": "^17.3.1"
   },
   "keywords": [],
   "author": "",

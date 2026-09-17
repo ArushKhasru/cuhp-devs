@@ -1,8 +1,4 @@
-const API_URL = (
-    process.env.NEXT_PUBLIC_HTTP_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:3001"
-).trim().replace(/\/+$/, "");
+export const API_URL = "/api";
 
 type ApiErrorPayload = {
     message?: string;

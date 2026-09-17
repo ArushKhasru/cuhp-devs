@@ -1,7 +1,7 @@
 import { ProfileOverviewClient } from "../../components/ProfileOverviewClient";
 import { SidebarWrapper } from "../../components/SidebarWrapper";
 import { serverApiFetch } from "../../lib/server-api";
-import { notFound } from "next/navigation";
+import { getProfileByHandle } from "../../lib/profile";
 
 export default async function UserProfilePage({ 
     params 
@@ -10,30 +10,8 @@ export default async function UserProfilePage({
 }) {
     const { slug } = await params;
     
-    let profileResponse;
-    let currentUser;
-
-    try {
-        // Fetch target profile by handle
-        profileResponse = await serverApiFetch(`/user/profile/handle/${slug}`);
-        
-        // Try to fetch current user to determine if it's their own profile
-        try {
-            currentUser = await serverApiFetch("/user/profile");
-        } catch (e) {
-            // Not logged in is okay
-        }
-    } catch (error: any) {
-        // If apiFetch throws an error object with status
-        if ((error as any).status === 404) {
-            notFound();
-        }
-        throw error;
-    }
-
-    if (!profileResponse || !profileResponse.user) {
-        notFound();
-    }
+    const profileResponse = await getProfileByHandle(slug);
+    const currentUser = await serverApiFetch("/user/profile").catch(() => null);
 
     const targetUser = profileResponse.user;
     const isOwnProfile = currentUser?._id === targetUser._id;

@@ -87,81 +87,49 @@ export const logActivityDB = async (user: string, action: string, room?: string)
 
 export class RoomManager {
   private static instance: RoomManager;
-  private roomUsers: Map<string, Map<string, any>> = new Map(); // roomId -> Map<userId, userData>
+  private roomUsers = new Map<string, Map<string, { user: any; sockets: Set<string> }>>();
   private activityLog: any[] = [];
-  private readonly MAX_LOG_SIZE = 20;
-
-  private constructor() { }
-
-  static getInstance(): RoomManager {
-    if (!RoomManager.instance) {
-      RoomManager.instance = new RoomManager();
-    }
-    return RoomManager.instance;
+  private constructor() {}
+  static getInstance() {
+    return RoomManager.instance ??= new RoomManager();
   }
-
   logActivity(user: string, action: string, room: string) {
-    const activity = {
-      user,
-      action,
-      room,
-      time: "Just now" // Simplified for now, could use relative timestamps on client
-    };
+    const activity = { user, action, room, time: "Just now" };
     this.activityLog.unshift(activity);
-    if (this.activityLog.length > this.MAX_LOG_SIZE) {
-      this.activityLog.pop();
-    }
+    this.activityLog = this.activityLog.slice(0, 20);
     return activity;
   }
-
-  getActivityLog() {
-    return this.activityLog;
+  getActivityLog() { return this.activityLog; }
+  addUser(roomId: string, userId: string, user: any, socketId: string) {
+    const users = this.roomUsers.get(roomId) ?? new Map();
+    const entry = users.get(userId) ?? { user, sockets: new Set<string>() };
+    entry.user = user;
+    entry.sockets.add(socketId);
+    users.set(userId, entry);
+    this.roomUsers.set(roomId, users);
   }
-
-  addUser(roomId: string, userId: string, userData: any) {
-    if (!this.roomUsers.has(roomId)) {
-      this.roomUsers.set(roomId, new Map());
-    }
-    this.roomUsers.get(roomId)!.set(userId, userData);
+  removeUser(roomId: string, userId: string, socketId: string) {
+    const users = this.roomUsers.get(roomId);
+    const entry = users?.get(userId);
+    if (!entry) return;
+    entry.sockets.delete(socketId);
+    if (!entry.sockets.size) users!.delete(userId);
+    if (!users!.size) this.roomUsers.delete(roomId);
   }
-
-  removeUser(roomId: string, userId: string) {
-    if (this.roomUsers.has(roomId)) {
-      this.roomUsers.get(roomId)!.delete(userId);
-      if (this.roomUsers.get(roomId)!.size === 0) {
-        this.roomUsers.delete(roomId);
-      }
-    }
-  }
-
   getOnlineUsers(roomId: string) {
-    const usersMap = this.roomUsers.get(roomId);
-    return usersMap ? Array.from(usersMap.values()) : [];
+    return Array.from(this.roomUsers.get(roomId)?.values() ?? [], entry => entry.user);
   }
-
   getAllRoomStats() {
-    const stats: Record<string, number> = {};
-    this.roomUsers.forEach((users, roomId) => {
-      // Map roomId back to roomName if needed, or just return counts by ID
-      // For the UI, we probably need canonical names.
-      // But let's just return a map of roomId to count first.
-      stats[roomId] = users.size;
-    });
-    return stats;
+    return Object.fromEntries(Array.from(this.roomUsers, ([id, users]) => [id, users.size]));
   }
-
-  // Find all rooms a user is in and remove them
-  removeUserFromAllRooms(userId: string): string[] {
-    const roomsAffected: string[] = [];
-    this.roomUsers.forEach((users, roomId) => {
-      if (users.has(userId)) {
-        users.delete(userId);
-        roomsAffected.push(roomId);
-        if (users.size === 0) {
-          this.roomUsers.delete(roomId);
-        }
+  removeUserFromAllRooms(userId: string, socketId: string) {
+    const affected: string[] = [];
+    for (const [roomId, users] of this.roomUsers) {
+      if (users.get(userId)?.sockets.has(socketId)) {
+        this.removeUser(roomId, userId, socketId);
+        affected.push(roomId);
       }
-    });
-    return roomsAffected;
+    }
+    return affected;
   }
 }

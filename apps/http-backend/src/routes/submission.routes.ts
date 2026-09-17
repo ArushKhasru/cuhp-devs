@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { createSubmission, getSubmissionById, getUserSubmissionsForProblem } from "../controller/submission.controller";
-
+import { protect } from "../middleware/auth.middleware";
+import { executionGuard } from "../middleware/execution.middleware";
 const router: Router = Router();
-
-router.post("/", createSubmission);
+router.use(protect);
+router.post("/", executionGuard, createSubmission);
 router.get("/problem/:slug", getUserSubmissionsForProblem);
 router.get("/:id", getSubmissionById);
-
 export default router;
